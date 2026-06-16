@@ -738,6 +738,136 @@ body {
   border-color: var(--dd-coral);
 }
 
+/* ---------- 인증(로그인/회원가입) ---------- */
+.dd-auth-page {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: var(--dd-cream);
+}
+.dd-auth-top {
+  height: 64px;
+  display: flex;
+  align-items: center;
+}
+.dd-auth-body {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 1fr;
+}
+.dd-auth-aside {
+  display: none;
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(150deg, #ffe0e8 0%, #fff0dd 50%, #e0f2fe 100%);
+  padding: 56px;
+  flex-direction: column;
+  justify-content: center;
+}
+.dd-auth-main {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px 64px;
+}
+.dd-auth-card {
+  width: 100%;
+  max-width: 420px;
+}
+@media (min-width: 992px) {
+  .dd-auth-body {
+    grid-template-columns: 1.05fr 1fr;
+  }
+  .dd-auth-aside {
+    display: flex;
+  }
+}
+
+.dd-field {
+  position: relative;
+}
+.dd-field .dd-field-icon {
+  position: absolute;
+  left: 15px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--dd-stone-400);
+  pointer-events: none;
+}
+.dd-field .dd-input {
+  padding-left: 44px;
+}
+.dd-field-eye {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  border: 0;
+  background: none;
+  color: var(--dd-stone-400);
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.dd-field-eye:hover {
+  background: var(--dd-stone-100);
+  color: var(--dd-stone-500);
+}
+.dd-social-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--dd-stone-200);
+  background: #fff;
+  padding: 12px 16px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--dd-ink-80);
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.dd-social-btn:hover {
+  border-color: var(--dd-coral-200);
+  background: var(--dd-coral-50);
+}
+.dd-or {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: var(--dd-stone-400);
+  font-size: 12px;
+  font-weight: 600;
+}
+.dd-or::before,
+.dd-or::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--dd-stone-200);
+}
+.dd-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--dd-stone-600);
+  cursor: pointer;
+  line-height: 1.5;
+}
+.dd-check input {
+  accent-color: var(--dd-coral);
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  flex: none;
+}
+
 /* 데스크톱/모바일 토글 */
 .dd-only-desktop {
   display: flex;
