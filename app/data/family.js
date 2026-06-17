@@ -3,6 +3,8 @@
 // 정책추천 폼 / 입력 요약 / 지원 가능성 분석에서 공유.
 // =========================================================================
 
+export const FAMILY_PROFILE_KEY = "dodam_family_profile";
+
 export const FAMILY_OPTIONS = {
   stage: [
     { value: "pregnant", label: "임신 준비·임신 중" },
@@ -46,10 +48,28 @@ export const DEFAULT_FAMILY = {
   name: "보호자",
   stage: "newborn",
   childAge: "0",
+  childrenAges: ["0"],
   income: "mid1",
   region: "seoul",
   special: ["dual"],
 };
+
+export function normalizeFamilyProfile(family = {}) {
+  const childrenAges =
+    Array.isArray(family.childrenAges) && family.childrenAges.length
+      ? family.childrenAges
+      : [family.childAge || DEFAULT_FAMILY.childAge];
+
+  return {
+    ...DEFAULT_FAMILY,
+    ...family,
+    childAge: childrenAges[0],
+    childrenAges,
+    special: Array.isArray(family.special)
+      ? family.special
+      : DEFAULT_FAMILY.special,
+  };
+}
 
 // value -> label 변환
 export function labelOf(group, value) {
@@ -59,16 +79,21 @@ export function labelOf(group, value) {
 
 // 입력 요약을 표 형태 행으로
 export function familyRows(family = DEFAULT_FAMILY) {
+  const profile = normalizeFamilyProfile(family);
+
   return [
-    { label: "가족 구성", value: labelOf("stage", family.stage) },
-    { label: "자녀 연령", value: labelOf("childAge", family.childAge) },
-    { label: "가구 소득", value: labelOf("income", family.income) },
-    { label: "거주 지역", value: labelOf("region", family.region) },
+    { label: "가족 구성", value: labelOf("stage", profile.stage) },
+    {
+      label: "자녀 연령대",
+      value: profile.childrenAges.map((age) => labelOf("childAge", age)).join(", "),
+    },
+    { label: "가구 소득", value: labelOf("income", profile.income) },
+    { label: "거주 지역", value: labelOf("region", profile.region) },
     {
       label: "특수 상황",
       value:
-        family.special && family.special.length
-          ? family.special.map((s) => labelOf("special", s)).join(", ")
+        profile.special && profile.special.length
+          ? profile.special.map((s) => labelOf("special", s)).join(", ")
           : "해당 없음",
     },
   ];

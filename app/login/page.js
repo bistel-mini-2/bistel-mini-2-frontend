@@ -6,22 +6,45 @@
 // 구성: 브랜드 패널 + 로그인 카드(입력/옵션/소셜/회원가입 링크).
 // =========================================================================
 import { useState } from "react";
+import { useContext } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthShell from "@/app/components/AuthShell";
 import Icon from "@/app/components/Icon";
+import authApi from "@/apis/authApi";
+import { AuthContext } from "@/contexts/AuthContext";
 
 export default function LoginPage() {
   const router = useRouter();
+  const authContext = useContext(AuthContext);
   const [email, setEmail] = useState("");
   const [pw, setPw] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [remember, setRemember] = useState(true);
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault();
-    // TODO: axios.post('/api/auth/login', { email, pw }) 연동 지점
-    router.push("/mypage");
+    if (isSubmitting) return;
+
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    try {
+      const response = await authApi.login({ email, password: pw });
+      const { access_token, user } = response.data;
+
+      authContext.loginAuth(user, access_token, remember);
+      router.push("/mypage");
+    } catch (error) {
+      setErrorMessage(
+        error.response?.data?.message ||
+          "로그인에 실패했어요. 이메일과 비밀번호를 확인해주세요."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -77,8 +100,14 @@ export default function LoginPage() {
             로그인 상태 유지
           </label>
 
-          <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg">
-            로그인 <Icon name="ArrowRight" size={18} />
+          {errorMessage && (
+            <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
+              <Icon name="CircleAlert" size={13} /> {errorMessage}
+            </p>
+          )}
+
+          <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={isSubmitting}>
+            {isSubmitting ? "로그인 중..." : "로그인"} <Icon name="ArrowRight" size={18} />
           </button>
         </form>
 

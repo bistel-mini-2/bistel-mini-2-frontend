@@ -7,14 +7,20 @@
 // 탭: 가족 프로필 / 관심 정책 / 신청 체크리스트 / 추천 이력 / 비교 이력 / 상담 이력
 // 저장 리스트(관심·추천·비교·상담)는 개별 삭제 + 전체 삭제를 지원한다.
 // =========================================================================
-import { useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { getPolicy, getPolicies } from "@/app/data/policies";
-import { familyRows, DEFAULT_FAMILY } from "@/app/data/family";
+import {
+  DEFAULT_FAMILY,
+  FAMILY_OPTIONS,
+  FAMILY_PROFILE_KEY,
+  familyRows,
+  normalizeFamilyProfile,
+} from "@/app/data/family";
 import { useLiked } from "@/app/data/useLiked";
 
 const TABS = [
@@ -89,12 +95,102 @@ function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxW
 
 export default function MyPage() {
   const [tab, setTab] = useState("profile");
+  const [familyProfile, setFamilyProfile] = useState(DEFAULT_FAMILY);
+  const [familyDraft, setFamilyDraft] = useState(DEFAULT_FAMILY);
+  const [isEditingFamily, setIsEditingFamily] = useState(false);
+  const [familySaved, setFamilySaved] = useState(false);
   const { ids: likedIds, remove: removeLiked, clear: clearLiked } = useLiked();
   const [recs, setRecs] = useState(INIT_REC);
   const [compares, setCompares] = useState(INIT_COMPARE);
   const [chats, setChats] = useState(INIT_CHAT);
 
   const liked = getPolicies(likedIds);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
+    if (!storedFamily) {
+      return;
+    }
+
+    try {
+      const nextFamily = normalizeFamilyProfile(JSON.parse(storedFamily));
+      startTransition(() => {
+        setFamilyProfile(nextFamily);
+        setFamilyDraft(nextFamily);
+      });
+    } catch {
+      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
+    }
+  }, []);
+
+  const setFamilyDraftValue = (key, value) => {
+    setFamilyDraft((family) => ({ ...family, [key]: value }));
+    setFamilySaved(false);
+  };
+
+  const toggleFamilyDraftSpecial = (value) => {
+    setFamilyDraft((family) => ({
+      ...family,
+      special: family.special.includes(value)
+        ? family.special.filter((item) => item !== value)
+        : [...family.special, value],
+    }));
+    setFamilySaved(false);
+  };
+
+  const toggleFamilyDraftChildAge = (value) => {
+    setFamilyDraft((family) => {
+      const nextFamily = normalizeFamilyProfile(family);
+      const isSelected = nextFamily.childrenAges.includes(value);
+
+      if (isSelected && nextFamily.childrenAges.length === 1) {
+        return nextFamily;
+      }
+
+      const childrenAges = isSelected
+        ? nextFamily.childrenAges.filter((age) => age !== value)
+        : [...nextFamily.childrenAges, value];
+
+      return {
+        ...nextFamily,
+        childAge: childrenAges[0],
+        childrenAges,
+      };
+    });
+    setFamilySaved(false);
+  };
+
+  const startFamilyEdit = () => {
+    setFamilyDraft(familyProfile);
+    setFamilySaved(false);
+    setIsEditingFamily(true);
+  };
+
+  const cancelFamilyEdit = () => {
+    setFamilyDraft(familyProfile);
+    setFamilySaved(false);
+    setIsEditingFamily(false);
+  };
+
+  const saveFamilyProfile = () => {
+    const nextFamily = normalizeFamilyProfile(familyDraft);
+
+    setFamilyProfile(nextFamily);
+    setFamilyDraft(nextFamily);
+    setIsEditingFamily(false);
+    setFamilySaved(true);
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        FAMILY_PROFILE_KEY,
+        JSON.stringify(nextFamily)
+      );
+    }
+  };
 
   return (
     <div className="dd-page">
@@ -126,18 +222,115 @@ export default function MyPage() {
             <div className="dd-card dd-card-lg" style={{ padding: 24, maxWidth: 640 }}>
               <div className="d-flex align-items-center justify-content-between mb-3">
                 <strong style={{ fontSize: 16 }}>저장된 가족 상황</strong>
-                <Link href="/recommend" className="dd-btn dd-btn-ghost dd-btn-sm">
-                  <Icon name="Pencil" size={15} /> 수정하기
-                </Link>
+                {isEditingFamily ? (
+                  <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={cancelFamilyEdit}>
+                    <Icon name="X" size={15} /> 취소
+                  </button>
+                ) : (
+                  <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={startFamilyEdit}>
+                    <Icon name="Pencil" size={15} /> 수정하기
+                  </button>
+                )}
               </div>
-              <div className="d-flex flex-column gap-2">
-                {familyRows(DEFAULT_FAMILY).map((r) => (
-                  <div key={r.label} className="d-flex justify-content-between align-items-start gap-3 py-2" style={{ borderBottom: "1px solid var(--dd-stone-100)", fontSize: 14 }}>
-                    <span className="dd-subtle">{r.label}</span>
-                    <span className="fw-semibold text-end" style={{ color: "var(--dd-ink-80)" }}>{r.value}</span>
+              {isEditingFamily ? (
+                <div className="d-flex flex-column gap-3">
+                  <div>
+                    <label className="dd-label">가족 구성</label>
+                    <div className="dd-radio-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                      {FAMILY_OPTIONS.stage.map((o) => (
+                        <label key={o.value} className={"dd-choice" + (familyDraft.stage === o.value ? " is-checked" : "")}>
+                          <input type="radio" name="mypage-stage" checked={familyDraft.stage === o.value} onChange={() => setFamilyDraftValue("stage", o.value)} />
+                          {o.label}
+                        </label>
+                      ))}
+                    </div>
                   </div>
-                ))}
-              </div>
+
+                  <div>
+                    <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                    <div className="d-flex flex-wrap gap-2">
+                      {FAMILY_OPTIONS.childAge.map((o) => {
+                        const on = normalizeFamilyProfile(familyDraft).childrenAges.includes(o.value);
+                        return (
+                          <button
+                            key={o.value}
+                            type="button"
+                            className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
+                            onClick={() => toggleFamilyDraftChildAge(o.value)}
+                            style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
+                          >
+                            {on && <Icon name="Check" size={14} />}
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="row g-2">
+                    <div className="col-12 col-sm-6">
+                      <label className="dd-label">가구 소득</label>
+                      <select className="dd-select" value={familyDraft.income} onChange={(e) => setFamilyDraftValue("income", e.target.value)}>
+                        {FAMILY_OPTIONS.income.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="col-12 col-sm-6">
+                      <label className="dd-label">거주 지역</label>
+                      <select className="dd-select" value={familyDraft.region} onChange={(e) => setFamilyDraftValue("region", e.target.value)}>
+                        {FAMILY_OPTIONS.region.map((o) => (
+                          <option key={o.value} value={o.value}>{o.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="dd-label">특수 상황 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                    <div className="d-flex flex-wrap gap-2">
+                      {FAMILY_OPTIONS.special.map((o) => {
+                        const on = familyDraft.special.includes(o.value);
+                        return (
+                          <button
+                            key={o.value}
+                            type="button"
+                            className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
+                            onClick={() => toggleFamilyDraftSpecial(o.value)}
+                            style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
+                          >
+                            {on && <Icon name="Check" size={14} />}
+                            {o.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  <div className="d-flex gap-2 justify-content-end flex-wrap">
+                    <button type="button" className="dd-btn dd-btn-ghost" onClick={cancelFamilyEdit}>
+                      취소
+                    </button>
+                    <button type="button" className="dd-btn dd-btn-coral" onClick={saveFamilyProfile}>
+                      <Icon name="Check" size={16} /> 저장하기
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="d-flex flex-column gap-2">
+                  {familyRows(familyProfile).map((r) => (
+                    <div key={r.label} className="d-flex justify-content-between align-items-start gap-3 py-2" style={{ borderBottom: "1px solid var(--dd-stone-100)", fontSize: 14 }}>
+                      <span className="dd-subtle">{r.label}</span>
+                      <span className="fw-semibold text-end" style={{ color: "var(--dd-ink-80)" }}>{r.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {familySaved && (
+                <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-green)" }}>
+                  <Icon name="Check" size={13} /> 가족 상황이 저장됐어요.
+                </p>
+              )}
               <div className="mt-3"><DisclaimerNote /></div>
             </div>
           )}

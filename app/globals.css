@@ -832,6 +832,9 @@ body {
   width: 100%;
   max-width: 420px;
 }
+.dd-auth-card-wide {
+  max-width: 680px;
+}
 @media (min-width: 992px) {
   .dd-auth-body {
     grid-template-columns: 1.05fr 1fr;
