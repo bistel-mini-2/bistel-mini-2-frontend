@@ -1,0 +1,125 @@
+"use client";
+
+// =========================================================================
+// 도담 — 회원가입 (/signup)
+// 의도: 이름·이메일·비밀번호 + 약관 동의로 가입. (자리표시 핸들러)
+// 구성: 브랜드 패널 + 가입 카드(입력/비밀번호 확인/약관 동의/로그인 링크).
+// =========================================================================
+import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import AuthShell from "@/app/components/AuthShell";
+import Icon from "@/app/components/Icon";
+
+const TERMS = [
+  { key: "service", label: "[필수] 도담 이용약관 동의", required: true },
+  { key: "privacy", label: "[필수] 개인정보 수집·이용 동의", required: true },
+];
+
+export default function SignupPage() {
+  const router = useRouter();
+  const [form, setForm] = useState({ name: "", email: "", pw: "", pw2: "" });
+  const [showPw, setShowPw] = useState(false);
+  const [agree, setAgree] = useState({});
+
+  const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const allChecked = TERMS.every((t) => agree[t.key]);
+  const requiredOk = TERMS.filter((t) => t.required).every((t) => agree[t.key]);
+  const pwMismatch = form.pw2.length > 0 && form.pw !== form.pw2;
+
+  const toggleAll = () => {
+    const next = !allChecked;
+    setAgree(TERMS.reduce((acc, t) => ({ ...acc, [t.key]: next }), {}));
+  };
+
+  const submit = (e) => {
+    e.preventDefault();
+    if (pwMismatch || !requiredOk) return;
+    // TODO: axios.post('/api/auth/signup', form) 연동 지점
+    router.push("/login");
+  };
+
+  return (
+    <AuthShell aside={{ title: <>1분이면 충분해요,<br />지금 도담을 시작하세요</> }}>
+      <div className="dd-card dd-card-lg" style={{ padding: 30 }}>
+        <h1 className="dd-title" style={{ fontSize: 26 }}>회원가입</h1>
+        <p className="mt-1 mb-0" style={{ fontSize: 14, color: "var(--dd-stone-500)" }}>
+          가족 상황을 저장하고 더 정확한 맞춤 추천을 받아보세요.
+        </p>
+
+        <form className="mt-4 d-flex flex-column gap-3" onSubmit={submit}>
+          <div>
+            <label className="dd-label">이름(닉네임)</label>
+            <div className="dd-field">
+              <span className="dd-field-icon"><Icon name="User" size={18} /></span>
+              <input className="dd-input" placeholder="도담에서 불릴 이름" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+            </div>
+          </div>
+
+          <div>
+            <label className="dd-label">이메일</label>
+            <div className="dd-field">
+              <span className="dd-field-icon"><Icon name="FileText" size={18} /></span>
+              <input type="email" className="dd-input" placeholder="이메일 주소" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required />
+            </div>
+          </div>
+
+          <div className="row g-2">
+            <div className="col-12 col-sm-6">
+              <label className="dd-label">비밀번호</label>
+              <div className="dd-field">
+                <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                <input type={showPw ? "text" : "password"} className="dd-input" placeholder="8자 이상" value={form.pw} onChange={(e) => set("pw", e.target.value)} required style={{ paddingRight: 48 }} />
+                <button type="button" className="dd-field-eye" onClick={() => setShowPw((v) => !v)} aria-label="비밀번호 표시">
+                  <Icon name={showPw ? "CircleAlert" : "BadgeCheck"} size={17} />
+                </button>
+              </div>
+            </div>
+            <div className="col-12 col-sm-6">
+              <label className="dd-label">비밀번호 확인</label>
+              <div className="dd-field">
+                <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                <input type={showPw ? "text" : "password"} className="dd-input" placeholder="다시 입력" value={form.pw2} onChange={(e) => set("pw2", e.target.value)} required
+                  style={{ borderColor: pwMismatch ? "var(--dd-coral-200)" : undefined }} />
+              </div>
+            </div>
+          </div>
+          {pwMismatch && (
+            <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
+              <Icon name="CircleAlert" size={13} /> 비밀번호가 일치하지 않아요.
+            </p>
+          )}
+
+          {/* 약관 */}
+          <div className="dd-card-soft" style={{ padding: 16 }}>
+            <label className="dd-check fw-bold" style={{ color: "var(--dd-ink-80)", fontSize: 14 }}>
+              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+              전체 동의
+            </label>
+            <hr className="dd-divider my-2" />
+            <div className="d-flex flex-column gap-2">
+              {TERMS.map((t) => (
+                <div key={t.key} className="d-flex align-items-center justify-content-between">
+                  <label className="dd-check">
+                    <input type="checkbox" checked={!!agree[t.key]} onChange={(e) => setAgree((a) => ({ ...a, [t.key]: e.target.checked }))} />
+                    {t.label}
+                  </label>
+                  <Link href={t.key === "service" ? "/terms" : "/privacy"} className="dd-subtle" style={{ fontSize: 12 }}>보기</Link>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={pwMismatch || !requiredOk}>
+            가입하고 시작하기 <Icon name="ArrowRight" size={18} />
+          </button>
+        </form>
+
+        <p className="text-center mt-4 mb-0" style={{ fontSize: 14, color: "var(--dd-stone-500)" }}>
+          이미 계정이 있으신가요?{" "}
+          <Link href="/login" className="dd-link">로그인</Link>
+        </p>
+      </div>
+    </AuthShell>
+  );
+}

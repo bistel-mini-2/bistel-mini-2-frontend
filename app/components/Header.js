@@ -49,12 +49,12 @@ export default function Header() {
               </Link>
             ))}
             <span className="dd-nav-auth">
-              <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm">
+              <Link href="/login" className="dd-btn dd-btn-ghost dd-btn-sm">
                 로그인
-              </button>
-              <button type="button" className="dd-btn dd-btn-coral dd-btn-sm">
+              </Link>
+              <Link href="/signup" className="dd-btn dd-btn-coral dd-btn-sm">
                 회원가입
-              </button>
+              </Link>
             </span>
           </nav>
 
@@ -86,12 +86,12 @@ export default function Header() {
               </Link>
             ))}
             <div className="d-flex gap-2 mt-2">
-              <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm dd-btn-block">
+              <Link href="/login" className="dd-btn dd-btn-ghost dd-btn-sm dd-btn-block" onClick={() => setOpen(false)}>
                 로그인
-              </button>
-              <button type="button" className="dd-btn dd-btn-coral dd-btn-sm dd-btn-block">
+              </Link>
+              <Link href="/signup" className="dd-btn dd-btn-coral dd-btn-sm dd-btn-block" onClick={() => setOpen(false)}>
                 회원가입
-              </button>
+              </Link>
             </div>
           </nav>
         )}

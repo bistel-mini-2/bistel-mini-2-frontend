@@ -39,46 +39,49 @@ npm run lint
 
 ## 현재 프로젝트 구조
 
-```text
 dodam/
-├── package.json
-├── next.config.mjs
-├── jsconfig.json
-├── public/                         # 정적 에셋
-└── app/
-    ├── layout.js                   # 루트 레이아웃
-    ├── globals.css                 # 전역 스타일 및 디자인 시스템
-    ├── page.js                     # 홈
-    ├── chat/page.js                # 챗봇 화면
-    ├── compare/page.js             # 정책 비교 화면
-    ├── mypage/page.js              # 마이페이지
-    ├── recommend/
-    │   ├── page.js                 # 추천 조건 입력
-    │   └── result/page.js          # 추천 결과
-    ├── policies/
-    │   ├── page.js                 # 정책 목록
-    │   └── [id]/
-    │       ├── page.js             # 정책 상세
-    │       ├── apply/page.js       # 신청 준비
-    │       └── eligibility/page.js # 지원 가능성
-    ├── components/                 # 공통 UI 컴포넌트
-    │   ├── Header.js
-    │   ├── Footer.js
-    │   ├── Modal.js
-    │   ├── PolicyCard.js
-    │   ├── ActionButtons.js
-    │   ├── DisclaimerNote.js
-    │   ├── StepIndicator.js
-    │   ├── PolicySelect.js
-    │   ├── Icon.js
-    │   ├── EligibilityResult.js
-    │   ├── PolicyCompare.js
-    │   └── ApplyPrep.js
-    └── data/                       # 더미 데이터 및 상수
-        ├── constants.js
-        ├── family.js
-        └── policies.js
-```
+├─ package.json # next 16 / react 19 / bootstrap 5.3 / lucide-react / axios
+├─ next.config.mjs
+├─ jsconfig.json # 경로 alias @/_ → ./_
+└─ app/
+├─ layout.js # 루트 레이아웃 (bootstrap + globals.css + Noto Sans KR)
+├─ globals.css # ★ 도담 디자인 시스템 (코랄/핑크 토큰 + 컴포넌트 클래스)
+├─ page.js # / 홈 (히어로·3스텝·기능·대표정책·면책)
+├─ chat/page.js # /chat AI 챗봇 (더미 SSE 응답)
+├─ login/page.js # /login 로그인 (이메일/PW)
+├─ signup/page.js # /signup 회원가입 (입력 + 약관 동의 → 약관/개인정보 링크)
+├─ terms/page.js # /terms 이용약관 (LegalDoc)
+├─ privacy/page.js # /privacy 개인정보 수집·이용 동의 (수집 항목 표)
+├─ recommend/
+│ ├─ page.js # /recommend 조건 입력 폼 (스텝1)
+│ └─ result/page.js # /recommend/result 추천 결과 (스텝2)
+├─ policies/
+│ ├─ page.js # /policies 리스트/검색/필터/비교바구니
+│ └─ [id]/
+│ ├─ page.js # /policies/[id] 상세 (탭 + 3개 모달 허브)
+│ ├─ eligibility/page.js # /policies/[id]/eligibility 지원 가능성(페이지)
+│ └─ apply/page.js # /policies/[id]/apply 신청 준비(페이지)
+├─ compare/page.js # /compare 정책 비교(페이지, ?a=&b= 딥링크)
+├─ mypage/page.js # /mypage 마이페이지 (탭 1페이지)
+├─ components/ # 공통 컴포넌트
+│ ├─ Header.js 네비(현재경로 코랄 pill) + 로그인/회원가입 링크
+│ ├─ Footer.js
+│ ├─ AuthShell.js 로그인/회원가입 공용 레이아웃(브랜드 패널 + 카드)
+│ ├─ LegalDoc.js 약관/개인정보 공용 문서 레이아웃(목차 + 조항 카드)
+│ ├─ Modal.js 딤 배경 · 닫기 · ESC · 스크롤 락 래퍼
+│ ├─ PolicyCard.js 순번·매칭배지·메타·액션 슬롯
+│ ├─ ActionButtons.js "다음 액션" 세트 (모달 콜백 또는 링크)
+│ ├─ DisclaimerNote.js 면책 문구
+│ ├─ StepIndicator.js 1·2·3 스텝
+│ ├─ PolicySelect.js 정책 선택 셀렉트
+│ ├─ Icon.js lucide-react 이름 매핑
+│ ├─ EligibilityResult.js ★ 지원 가능성 — 모달+페이지 공용 내용
+│ ├─ PolicyCompare.js ★ 정책 비교 — 모달+페이지 공용 내용
+│ └─ ApplyPrep.js ★ 신청 준비 — 모달+페이지 공용 내용
+└─ data/ # 더미 데이터 (실제 API/axios 자리표시)
+├─ constants.js NAV_ITEMS · ACTION_META · 면책 문구
+├─ policies.js 정책 6종 + 상세/지원가능성/추천/체크리스트 헬퍼
+└─ family.js 가족 입력 옵션·기본값·요약 헬퍼
 
 ## 주요 화면
 
@@ -99,11 +102,11 @@ dodam/
 
 핵심 기능은 내용 컴포넌트를 분리해 모달과 독립 페이지에서 함께 재사용합니다.
 
-| 기능 | 공용 컴포넌트 | 연결 라우트 |
-| --- | --- | --- |
+| 기능        | 공용 컴포넌트       | 연결 라우트                  |
+| ----------- | ------------------- | ---------------------------- |
 | 지원 가능성 | `EligibilityResult` | `/policies/[id]/eligibility` |
-| 정책 비교 | `PolicyCompare` | `/compare` |
-| 신청 준비 | `ApplyPrep` | `/policies/[id]/apply` |
+| 정책 비교   | `PolicyCompare`     | `/compare`                   |
+| 신청 준비   | `ApplyPrep`         | `/policies/[id]/apply`       |
 
 이 구조 덕분에 상세 화면 안에서 모달로 보여줄 수도 있고, 별도 URL로 직접 진입하거나 공유할 수도 있습니다.
 
