@@ -45,7 +45,7 @@ dodam/
 ├─ jsconfig.json # 경로 alias @/_ → ./_
 └─ app/
 ├─ layout.js # 루트 레이아웃 (bootstrap + globals.css + Noto Sans KR)
-├─ globals.css # ★ 도담 디자인 시스템 (코랄/핑크 토큰 + 컴포넌트 클래스)
+├─ globals.css # ★ 도담 디자인 시스템 (코랄/핑크 토큰 + 컴포넌트 클래스 · dd-del-btn · dd-heart-btn · dd-cmp-chip)
 ├─ page.js # / 홈 (히어로·3스텝·기능·대표정책·면책)
 ├─ chat/page.js # /chat AI 챗봇 (더미 SSE 응답)
 ├─ login/page.js # /login 로그인 (이메일/PW)
@@ -62,26 +62,27 @@ dodam/
 │ ├─ eligibility/page.js # /policies/[id]/eligibility 지원 가능성(페이지)
 │ └─ apply/page.js # /policies/[id]/apply 신청 준비(페이지)
 ├─ compare/page.js # /compare 정책 비교(페이지, ?a=&b= 딥링크)
-├─ mypage/page.js # /mypage 마이페이지 (탭 1페이지)
+├─ mypage/page.js # /mypage 마이페이지 (탭 1페이지 · 6탭: 가족프로필·관심정책·체크리스트·추천이력·비교이력·상담이력 · 개별/전체 삭제)
 ├─ components/ # 공통 컴포넌트
 │ ├─ Header.js 네비(현재경로 코랄 pill) + 로그인/회원가입 링크
 │ ├─ Footer.js
 │ ├─ AuthShell.js 로그인/회원가입 공용 레이아웃(브랜드 패널 + 카드)
 │ ├─ LegalDoc.js 약관/개인정보 공용 문서 레이아웃(목차 + 조항 카드)
 │ ├─ Modal.js 딤 배경 · 닫기 · ESC · 스크롤 락 래퍼
-│ ├─ PolicyCard.js 순번·매칭배지·메타·액션 슬롯
+│ ├─ PolicyCard.js 순번·매칭배지·메타·액션 슬롯 · 하트 버튼(liked/onToggleLike)
 │ ├─ ActionButtons.js "다음 액션" 세트 (모달 콜백 또는 링크)
 │ ├─ DisclaimerNote.js 면책 문구
 │ ├─ StepIndicator.js 1·2·3 스텝
 │ ├─ PolicySelect.js 정책 선택 셀렉트
-│ ├─ Icon.js lucide-react 이름 매핑
+│ ├─ Icon.js lucide-react 이름 매핑 (Trash2·Repeat 추가)
 │ ├─ EligibilityResult.js ★ 지원 가능성 — 모달+페이지 공용 내용
 │ ├─ PolicyCompare.js ★ 정책 비교 — 모달+페이지 공용 내용
 │ └─ ApplyPrep.js ★ 신청 준비 — 모달+페이지 공용 내용
 └─ data/ # 더미 데이터 (실제 API/axios 자리표시)
 ├─ constants.js NAV_ITEMS · ACTION_META · 면책 문구
 ├─ policies.js 정책 6종 + 상세/지원가능성/추천/체크리스트 헬퍼
-└─ family.js 가족 입력 옵션·기본값·요약 헬퍼
+├─ family.js 가족 입력 옵션·기본값·요약 헬퍼
+└─ useLiked.js ★ 관심 정책 ID 목록 관리 훅 (has · toggle · remove · clear)
 
 ## 주요 화면
 

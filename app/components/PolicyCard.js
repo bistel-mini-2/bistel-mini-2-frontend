@@ -11,6 +11,8 @@ export default function PolicyCard({
   match,
   showMeta = false,
   href,
+  liked,
+  onToggleLike,
   children,
 }) {
   if (!policy) return null;
@@ -50,6 +52,18 @@ export default function PolicyCard({
             )}
           </div>
         </div>
+        {onToggleLike && (
+          <button
+            type="button"
+            className={"dd-heart-btn" + (liked ? " is-liked" : "")}
+            onClick={onToggleLike}
+            aria-pressed={liked}
+            aria-label={liked ? "관심 정책에서 빼기" : "관심 정책에 담기"}
+            title={liked ? "관심 정책에서 빼기" : "관심 정책에 담기"}
+          >
+            <Icon name="Heart" size={18} fill={liked ? "currentColor" : "none"} />
+          </button>
+        )}
       </div>
 
       <p className="mt-3 mb-0 flex-grow-1" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.6 }}>
