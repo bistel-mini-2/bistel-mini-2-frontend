@@ -14,6 +14,7 @@ import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
 import { POLICIES, CATEGORIES } from "@/app/data/policies";
+import { useLiked } from "@/app/data/useLiked";
 
 const SORTS = [
   { value: "name", label: "이름순" },
@@ -26,6 +27,7 @@ export default function PoliciesPage() {
   const [cat, setCat] = useState("all");
   const [sort, setSort] = useState("name");
   const [basket, setBasket] = useState([]);
+  const { has: isLiked, toggle: toggleLike } = useLiked();
 
   const list = useMemo(() => {
     let arr = POLICIES.filter((p) => {
@@ -99,7 +101,7 @@ export default function PoliciesPage() {
             const inBasket = basket.includes(p.id);
             return (
               <div className="col-12 col-sm-6 col-lg-4" key={p.id}>
-                <PolicyCard policy={p} showMeta>
+                <PolicyCard policy={p} showMeta liked={isLiked(p.id)} onToggleLike={() => toggleLike(p.id)}>
                   <Link href={`/policies/${p.id}`} className="dd-btn dd-btn-ghost dd-btn-sm">
                     <Icon name="FileText" size={15} /> 상세보기
                   </Link>

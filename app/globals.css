@@ -231,6 +231,64 @@ body {
   border-color: var(--dd-coral-200);
 }
 
+/* 삭제 버튼 (이력/관심 정책 공용) */
+.dd-del-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1px solid var(--dd-stone-200);
+  background: #fff;
+  color: var(--dd-stone-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex: none;
+}
+.dd-del-btn:hover {
+  border-color: var(--dd-coral-200);
+  color: var(--dd-coral);
+  background: var(--dd-coral-50);
+}
+
+/* 관심 정책 하트 버튼 (정책 카드 우상단) */
+.dd-heart-btn {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  border: 1px solid var(--dd-stone-200);
+  background: #fff;
+  color: var(--dd-stone-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.15s;
+  flex: none;
+}
+.dd-heart-btn:hover {
+  border-color: var(--dd-coral-200);
+  color: var(--dd-coral);
+  background: var(--dd-coral-50);
+}
+.dd-heart-btn.is-liked {
+  border-color: var(--dd-coral-200);
+  color: var(--dd-coral);
+  background: var(--dd-coral-50);
+}
+
+/* 비교 이력 — 정책 칩 */
+.dd-cmp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: var(--dd-stone-50);
+  border: 1px solid var(--dd-stone-100);
+  border-radius: 999px;
+  padding: 5px 12px 5px 5px;
+}
+
 /* ---------- 버튼 ---------- */
 .dd-btn {
   display: inline-flex;

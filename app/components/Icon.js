@@ -48,6 +48,8 @@ import {
   Tag,
   Users,
   BadgeCheck,
+  Trash2,
+  Repeat,
 } from "lucide-react";
 
 const MAP = {
@@ -95,6 +97,8 @@ const MAP = {
   Tag,
   Users,
   BadgeCheck,
+  Trash2,
+  Repeat,
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 2, ...rest }) {
