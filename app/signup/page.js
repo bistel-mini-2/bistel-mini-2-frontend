@@ -10,6 +10,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthShell from "@/app/components/AuthShell";
 import Icon from "@/app/components/Icon";
+import StepIndicator from "@/app/components/StepIndicator";
+import authApi from "@/apis/authApi";
+import {
+  DEFAULT_FAMILY,
+  FAMILY_OPTIONS,
+  FAMILY_PROFILE_KEY,
+  familyRows,
+  normalizeFamilyProfile,
+} from "@/app/data/family";
 
 const TERMS = [
   { key: "service", label: "[필수] 도담 이용약관 동의", required: true },
@@ -18,101 +27,284 @@ const TERMS = [
 
 export default function SignupPage() {
   const router = useRouter();
+  const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", pw: "", pw2: "" });
+  const [family, setFamily] = useState(DEFAULT_FAMILY);
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState({});
+  const [errorMessage, setErrorMessage] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
+  const setFamilyValue = (key, value) =>
+    setFamily((f) => ({ ...f, [key]: value }));
   const allChecked = TERMS.every((t) => agree[t.key]);
   const requiredOk = TERMS.filter((t) => t.required).every((t) => agree[t.key]);
   const pwMismatch = form.pw2.length > 0 && form.pw !== form.pw2;
+  const summaryFamily = normalizeFamilyProfile({
+    ...family,
+    name: form.name || DEFAULT_FAMILY.name,
+  });
 
   const toggleAll = () => {
     const next = !allChecked;
     setAgree(TERMS.reduce((acc, t) => ({ ...acc, [t.key]: next }), {}));
   };
 
-  const submit = (e) => {
+  const toggleSpecial = (value) =>
+    setFamily((f) => ({
+      ...f,
+      special: f.special.includes(value)
+        ? f.special.filter((s) => s !== value)
+        : [...f.special, value],
+    }));
+
+  const toggleChildAge = (value) =>
+    setFamily((f) => {
+      const nextFamily = normalizeFamilyProfile(f);
+      const isSelected = nextFamily.childrenAges.includes(value);
+
+      if (isSelected && nextFamily.childrenAges.length === 1) {
+        return nextFamily;
+      }
+
+      const childrenAges = isSelected
+        ? nextFamily.childrenAges.filter((age) => age !== value)
+        : [...nextFamily.childrenAges, value];
+
+      return {
+        ...nextFamily,
+        childAge: childrenAges[0],
+        childrenAges,
+      };
+    });
+
+  const submit = async (e) => {
     e.preventDefault();
-    if (pwMismatch || !requiredOk) return;
-    // TODO: axios.post('/api/auth/signup', form) 연동 지점
-    router.push("/login");
+    if (step === 1) {
+      if (pwMismatch || !requiredOk) return;
+      setErrorMessage("");
+      setStep(2);
+      return;
+    }
+
+    if (isSubmitting) return;
+
+    setErrorMessage("");
+    setIsSubmitting(true);
+
+    try {
+      await authApi.signup({
+        email: form.email,
+        password: form.pw,
+        nickname: form.name,
+      });
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          FAMILY_PROFILE_KEY,
+          JSON.stringify(summaryFamily)
+        );
+      }
+
+      router.push("/login");
+    } catch (error) {
+      setErrorMessage(
+        error.response?.data?.message ||
+          "회원가입에 실패했어요. 입력한 정보를 다시 확인해주세요."
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
-    <AuthShell aside={{ title: <>1분이면 충분해요,<br />지금 도담을 시작하세요</> }}>
+    <AuthShell wide aside={{ title: <>1분이면 충분해요,<br />지금 도담을 시작하세요</> }}>
       <div className="dd-card dd-card-lg" style={{ padding: 30 }}>
         <h1 className="dd-title" style={{ fontSize: 26 }}>회원가입</h1>
         <p className="mt-1 mb-0" style={{ fontSize: 14, color: "var(--dd-stone-500)" }}>
           가족 상황을 저장하고 더 정확한 맞춤 추천을 받아보세요.
         </p>
+        <div className="mt-3">
+          <StepIndicator current={step} steps={["계정 정보", "가족 상황", "가입 완료"]} />
+        </div>
 
         <form className="mt-4 d-flex flex-column gap-3" onSubmit={submit}>
-          <div>
-            <label className="dd-label">이름(닉네임)</label>
-            <div className="dd-field">
-              <span className="dd-field-icon"><Icon name="User" size={18} /></span>
-              <input className="dd-input" placeholder="도담에서 불릴 이름" value={form.name} onChange={(e) => set("name", e.target.value)} required />
-            </div>
-          </div>
-
-          <div>
-            <label className="dd-label">이메일</label>
-            <div className="dd-field">
-              <span className="dd-field-icon"><Icon name="FileText" size={18} /></span>
-              <input type="email" className="dd-input" placeholder="이메일 주소" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required />
-            </div>
-          </div>
-
-          <div className="row g-2">
-            <div className="col-12 col-sm-6">
-              <label className="dd-label">비밀번호</label>
-              <div className="dd-field">
-                <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
-                <input type={showPw ? "text" : "password"} className="dd-input" placeholder="8자 이상" value={form.pw} onChange={(e) => set("pw", e.target.value)} required style={{ paddingRight: 48 }} />
-                <button type="button" className="dd-field-eye" onClick={() => setShowPw((v) => !v)} aria-label="비밀번호 표시">
-                  <Icon name={showPw ? "CircleAlert" : "BadgeCheck"} size={17} />
-                </button>
+          {step === 1 ? (
+            <>
+              <div>
+                <label className="dd-label">이름(닉네임)</label>
+                <div className="dd-field">
+                  <span className="dd-field-icon"><Icon name="User" size={18} /></span>
+                  <input className="dd-input" placeholder="도담에서 불릴 이름" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+                </div>
               </div>
-            </div>
-            <div className="col-12 col-sm-6">
-              <label className="dd-label">비밀번호 확인</label>
-              <div className="dd-field">
-                <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
-                <input type={showPw ? "text" : "password"} className="dd-input" placeholder="다시 입력" value={form.pw2} onChange={(e) => set("pw2", e.target.value)} required
-                  style={{ borderColor: pwMismatch ? "var(--dd-coral-200)" : undefined }} />
+
+              <div>
+                <label className="dd-label">이메일</label>
+                <div className="dd-field">
+                  <span className="dd-field-icon"><Icon name="FileText" size={18} /></span>
+                  <input type="email" className="dd-input" placeholder="이메일 주소" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required />
+                </div>
               </div>
-            </div>
-          </div>
-          {pwMismatch && (
+
+              <div className="row g-2">
+                <div className="col-12 col-sm-6">
+                  <label className="dd-label">비밀번호</label>
+                  <div className="dd-field">
+                    <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="8자 이상" value={form.pw} onChange={(e) => set("pw", e.target.value)} required style={{ paddingRight: 48 }} />
+                    <button type="button" className="dd-field-eye" onClick={() => setShowPw((v) => !v)} aria-label="비밀번호 표시">
+                      <Icon name={showPw ? "CircleAlert" : "BadgeCheck"} size={17} />
+                    </button>
+                  </div>
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="dd-label">비밀번호 확인</label>
+                  <div className="dd-field">
+                    <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="다시 입력" value={form.pw2} onChange={(e) => set("pw2", e.target.value)} required
+                      style={{ borderColor: pwMismatch ? "var(--dd-coral-200)" : undefined }} />
+                  </div>
+                </div>
+              </div>
+              {pwMismatch && (
+                <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={13} /> 비밀번호가 일치하지 않아요.
+                </p>
+              )}
+
+              {/* 약관 */}
+              <div className="dd-card-soft" style={{ padding: 16 }}>
+                <label className="dd-check fw-bold" style={{ color: "var(--dd-ink-80)", fontSize: 14 }}>
+                  <input type="checkbox" checked={allChecked} onChange={toggleAll} />
+                  전체 동의
+                </label>
+                <hr className="dd-divider my-2" />
+                <div className="d-flex flex-column gap-2">
+                  {TERMS.map((t) => (
+                    <div key={t.key} className="d-flex align-items-center justify-content-between">
+                      <label className="dd-check">
+                        <input type="checkbox" checked={!!agree[t.key]} onChange={(e) => setAgree((a) => ({ ...a, [t.key]: e.target.checked }))} />
+                        {t.label}
+                      </label>
+                      <Link href={t.key === "service" ? "/terms" : "/privacy"} className="dd-subtle" style={{ fontSize: 12 }}>보기</Link>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div>
+                <label className="dd-label">가족 구성</label>
+                <div className="dd-radio-grid" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
+                  {FAMILY_OPTIONS.stage.map((o) => (
+                    <label key={o.value} className={"dd-choice" + (family.stage === o.value ? " is-checked" : "")}>
+                      <input type="radio" name="stage" checked={family.stage === o.value} onChange={() => setFamilyValue("stage", o.value)} />
+                      {o.label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                <div className="d-flex flex-wrap gap-2">
+                  {FAMILY_OPTIONS.childAge.map((o) => {
+                    const on = summaryFamily.childrenAges.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => toggleChildAge(o.value)}
+                        className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
+                        style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
+                      >
+                        {on && <Icon name="Check" size={14} />}
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="row g-2">
+                <div className="col-12 col-sm-6">
+                  <label className="dd-label">가구 소득</label>
+                  <select className="dd-select" value={family.income} onChange={(e) => setFamilyValue("income", e.target.value)}>
+                    {FAMILY_OPTIONS.income.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="col-12 col-sm-6">
+                  <label className="dd-label">거주 지역</label>
+                  <select className="dd-select" value={family.region} onChange={(e) => setFamilyValue("region", e.target.value)}>
+                    {FAMILY_OPTIONS.region.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className="dd-label">특수 상황 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                <div className="d-flex flex-wrap gap-2">
+                  {FAMILY_OPTIONS.special.map((o) => {
+                    const on = family.special.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => toggleSpecial(o.value)}
+                        className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
+                        style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
+                      >
+                        {on && <Icon name="Check" size={14} />}
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="dd-card-soft" style={{ padding: 16 }}>
+                <div className="d-flex align-items-center gap-2 mb-2">
+                  <Icon name="ClipboardList" size={16} style={{ color: "var(--dd-coral)" }} />
+                  <strong style={{ fontSize: 14 }}>입력 정보 요약</strong>
+                </div>
+                <div className="d-flex flex-wrap gap-2">
+                  {familyRows(summaryFamily).map((r) => (
+                    <span key={r.label} className="dd-pill dd-pill-stone">
+                      {r.label}: {r.value}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </>
+          )}
+
+          {errorMessage && (
             <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
-              <Icon name="CircleAlert" size={13} /> 비밀번호가 일치하지 않아요.
+              <Icon name="CircleAlert" size={13} /> {errorMessage}
             </p>
           )}
 
-          {/* 약관 */}
-          <div className="dd-card-soft" style={{ padding: 16 }}>
-            <label className="dd-check fw-bold" style={{ color: "var(--dd-ink-80)", fontSize: 14 }}>
-              <input type="checkbox" checked={allChecked} onChange={toggleAll} />
-              전체 동의
-            </label>
-            <hr className="dd-divider my-2" />
-            <div className="d-flex flex-column gap-2">
-              {TERMS.map((t) => (
-                <div key={t.key} className="d-flex align-items-center justify-content-between">
-                  <label className="dd-check">
-                    <input type="checkbox" checked={!!agree[t.key]} onChange={(e) => setAgree((a) => ({ ...a, [t.key]: e.target.checked }))} />
-                    {t.label}
-                  </label>
-                  <Link href={t.key === "service" ? "/terms" : "/privacy"} className="dd-subtle" style={{ fontSize: 12 }}>보기</Link>
-                </div>
-              ))}
-            </div>
+          <div className="d-flex gap-2">
+            {step === 2 && (
+              <button type="button" className="dd-btn dd-btn-ghost dd-btn-lg" onClick={() => setStep(1)} disabled={isSubmitting} style={{ flex: "none" }}>
+                <Icon name="ArrowLeft" size={18} /> 이전
+              </button>
+            )}
+            <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={(step === 1 && (pwMismatch || !requiredOk)) || isSubmitting}>
+              {step === 1
+                ? "가족 상황 입력하기"
+                : isSubmitting
+                  ? "가입 처리 중..."
+                  : "가입하고 시작하기"} <Icon name="ArrowRight" size={18} />
+            </button>
           </div>
-
-          <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={pwMismatch || !requiredOk}>
-            가입하고 시작하기 <Icon name="ArrowRight" size={18} />
-          </button>
         </form>
 
         <p className="text-center mt-4 mb-0" style={{ fontSize: 14, color: "var(--dd-stone-500)" }}>

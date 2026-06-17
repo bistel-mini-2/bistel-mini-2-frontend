@@ -6,12 +6,17 @@
 // 결과 배너 + 분석 표(충족/추가확인 배지) + 입력 요약 + 다시 분석하기 +
 // 하단 액션(비교/신청준비) + 면책 문구.
 // =========================================================================
-import { useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import ActionButtons from "@/app/components/ActionButtons";
 import { getPolicy, ELIGIBILITY_LEVELS } from "@/app/data/policies";
-import { DEFAULT_FAMILY, familyRows } from "@/app/data/family";
+import {
+  DEFAULT_FAMILY,
+  FAMILY_PROFILE_KEY,
+  familyRows,
+  normalizeFamilyProfile,
+} from "@/app/data/family";
 
 const STATUS_META = {
   ok: { label: "충족", pill: "dd-pill-green", icon: "Check" },
@@ -22,6 +27,29 @@ const STATUS_META = {
 export default function EligibilityResult({ policyId, family = DEFAULT_FAMILY, onAction }) {
   const policy = getPolicy(policyId);
   const [analyzing, setAnalyzing] = useState(false);
+  const [currentFamily, setCurrentFamily] = useState(family);
+
+  useEffect(() => {
+    startTransition(() => setCurrentFamily(family));
+  }, [family]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
+    if (!storedFamily) {
+      return;
+    }
+
+    try {
+      const nextFamily = normalizeFamilyProfile(JSON.parse(storedFamily));
+      startTransition(() => setCurrentFamily(nextFamily));
+    } catch {
+      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
+    }
+  }, []);
 
   if (!policy) return <p className="dd-subtle">정책 정보를 찾을 수 없어요.</p>;
 
@@ -92,7 +120,7 @@ export default function EligibilityResult({ policyId, family = DEFAULT_FAMILY, o
           <strong style={{ fontSize: 14 }}>분석에 사용한 입력 정보</strong>
         </div>
         <div className="d-flex flex-wrap gap-2">
-          {familyRows(family).map((r) => (
+          {familyRows(currentFamily).map((r) => (
             <span key={r.label} className="dd-pill dd-pill-stone">
               {r.label}: {r.value}
             </span>

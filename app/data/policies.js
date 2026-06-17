@@ -3,6 +3,7 @@
 // 실제 API(axios) 대신 사용하는 정적 데이터. 모든 페이지/모달이 공유한다.
 // 출처 표기는 학습/데모용 안내이며 실제 신청 정보는 공식 기관 확인 필요.
 // =========================================================================
+import { normalizeFamilyProfile } from "@/app/data/family";
 
 // 분야(카테고리) 필터용
 export const CATEGORIES = [
@@ -300,12 +301,52 @@ export const RECOMMENDED = [
   { id: "care-service", match: 88 },
   { id: "child-allowance", match: 85 },
   { id: "postnatal-care", match: 81 },
+  { id: "single-parent", match: 76 },
 ];
 
-export function getRecommended() {
-  return RECOMMENDED.map((r) => ({ ...getPolicy(r.id), match: r.match })).filter(
-    (p) => p && p.id
-  );
+const RECOMMEND_RULES = {
+  "parent-allowance": { ages: ["0", "1"] },
+  "first-meet": { ages: ["preborn", "0"] },
+  "care-service": { ages: ["0", "1", "2-5", "6-12"], special: ["dual", "many"] },
+  "postnatal-care": { ages: ["preborn", "0"], incomeSensitive: true },
+  "child-allowance": { ages: ["0", "1", "2-5", "6-12"] },
+  "single-parent": { ages: ["0", "1", "2-5", "6-12", "13+"], special: ["single"] },
+};
+
+const BASE_MATCH = RECOMMENDED.reduce(
+  (acc, item) => ({ ...acc, [item.id]: item.match }),
+  {}
+);
+
+const clampMatch = (score) => Math.max(45, Math.min(99, score));
+
+export function getRecommended(family) {
+  const profile = normalizeFamilyProfile(family);
+  const selectedAges = profile.childrenAges;
+
+  return POLICIES.map((policy) => {
+    const rule = RECOMMEND_RULES[policy.id] || {};
+    const hasAgeMatch =
+      !rule.ages || selectedAges.some((age) => rule.ages.includes(age));
+    const hasSpecialMatch =
+      rule.special && profile.special.some((item) => rule.special.includes(item));
+    const hasIncomeMatch =
+      rule.incomeSensitive && ["low", "mid1", "mid2", "unknown"].includes(profile.income);
+
+    let match = BASE_MATCH[policy.id] || 74;
+
+    if (rule.ages) {
+      match += hasAgeMatch ? 8 : -18;
+    }
+    if (hasSpecialMatch) {
+      match += 8;
+    }
+    if (hasIncomeMatch) {
+      match += 4;
+    }
+
+    return { ...policy, match: clampMatch(match) };
+  }).sort((a, b) => b.match - a.match);
 }
 
 // 지원 가능성 레벨 메타

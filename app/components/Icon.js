@@ -50,6 +50,7 @@ import {
   BadgeCheck,
   Trash2,
   Repeat,
+  LogOut,
 } from "lucide-react";
 
 const MAP = {
@@ -99,6 +100,7 @@ const MAP = {
   BadgeCheck,
   Trash2,
   Repeat,
+  LogOut,
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 2, ...rest }) {

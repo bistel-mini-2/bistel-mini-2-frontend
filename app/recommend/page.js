@@ -12,13 +12,39 @@ import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
-import { FAMILY_OPTIONS, DEFAULT_FAMILY, labelOf } from "@/app/data/family";
+import {
+  DEFAULT_FAMILY,
+  FAMILY_OPTIONS,
+  FAMILY_PROFILE_KEY,
+  familyRows,
+  normalizeFamilyProfile,
+} from "@/app/data/family";
 
 export default function RecommendPage() {
   const router = useRouter();
   const [family, setFamily] = useState(DEFAULT_FAMILY);
+  const normalizedFamily = normalizeFamilyProfile(family);
 
   const set = (key, value) => setFamily((f) => ({ ...f, [key]: value }));
+  const toggleChildAge = (value) =>
+    setFamily((f) => {
+      const nextFamily = normalizeFamilyProfile(f);
+      const isSelected = nextFamily.childrenAges.includes(value);
+
+      if (isSelected && nextFamily.childrenAges.length === 1) {
+        return nextFamily;
+      }
+
+      const childrenAges = isSelected
+        ? nextFamily.childrenAges.filter((age) => age !== value)
+        : [...nextFamily.childrenAges, value];
+
+      return {
+        ...nextFamily,
+        childAge: childrenAges[0],
+        childrenAges,
+      };
+    });
   const toggleSpecial = (value) =>
     setFamily((f) => ({
       ...f,
@@ -27,18 +53,18 @@ export default function RecommendPage() {
         : [...f.special, value],
     }));
 
-  const summaryRows = [
-    { label: "가족 구성", value: labelOf("stage", family.stage) },
-    { label: "자녀 연령", value: labelOf("childAge", family.childAge) },
-    { label: "가구 소득", value: labelOf("income", family.income) },
-    { label: "거주 지역", value: labelOf("region", family.region) },
-    {
-      label: "특수 상황",
-      value: family.special.length
-        ? family.special.map((s) => labelOf("special", s)).join(", ")
-        : "해당 없음",
-    },
-  ];
+  const summaryRows = familyRows(normalizedFamily);
+
+  const goResult = () => {
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(
+        FAMILY_PROFILE_KEY,
+        JSON.stringify(normalizedFamily)
+      );
+    }
+
+    router.push("/recommend/result");
+  };
 
   return (
     <div className="dd-page">
@@ -71,15 +97,6 @@ export default function RecommendPage() {
               </div>
 
               <div className="row g-3">
-                {/* 자녀 연령 */}
-                <div className="col-12 col-sm-6">
-                  <label className="dd-label">자녀 연령</label>
-                  <select className="dd-select" value={family.childAge} onChange={(e) => set("childAge", e.target.value)}>
-                    {FAMILY_OPTIONS.childAge.map((o) => (
-                      <option key={o.value} value={o.value}>{o.label}</option>
-                    ))}
-                  </select>
-                </div>
                 {/* 가구 소득 */}
                 <div className="col-12 col-sm-6">
                   <label className="dd-label">가구 소득</label>
@@ -97,6 +114,28 @@ export default function RecommendPage() {
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
                   </select>
+                </div>
+              </div>
+
+              {/* 자녀 연령 */}
+              <div className="mt-4">
+                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                <div className="d-flex flex-wrap gap-2">
+                  {FAMILY_OPTIONS.childAge.map((o) => {
+                    const on = normalizedFamily.childrenAges.includes(o.value);
+                    return (
+                      <button
+                        key={o.value}
+                        type="button"
+                        onClick={() => toggleChildAge(o.value)}
+                        className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
+                        style={{ padding: "9px 16px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
+                      >
+                        {on && <Icon name="Check" size={14} />}
+                        {o.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 
@@ -145,11 +184,7 @@ export default function RecommendPage() {
               <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm dd-btn-block" onClick={() => setFamily(DEFAULT_FAMILY)}>
                 <Icon name="Pencil" size={15} /> 처음부터 다시 입력
               </button>
-              <button
-                type="button"
-                className="dd-btn dd-btn-coral dd-btn-block mt-2"
-                onClick={() => router.push("/recommend/result")}
-              >
+              <button type="button" className="dd-btn dd-btn-coral dd-btn-block mt-2" onClick={goResult}>
                 추천 정책 확인하기 <Icon name="ArrowRight" size={18} />
               </button>
               <div className="mt-3 text-center">

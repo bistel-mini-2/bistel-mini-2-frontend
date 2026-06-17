@@ -11,7 +11,7 @@ const POINTS = [
   { icon: "Bookmark", text: "관심 정책과 신청 진행을 한곳에 저장해요" },
 ];
 
-export default function AuthShell({ aside, children }) {
+export default function AuthShell({ aside, children, wide = false }) {
   return (
     <div className="dd-auth-page">
       {/* 상단 로고 */}
@@ -55,7 +55,7 @@ export default function AuthShell({ aside, children }) {
 
         {/* 카드 영역 */}
         <main className="dd-auth-main">
-          <div className="dd-auth-card">{children}</div>
+          <div className={"dd-auth-card" + (wide ? " dd-auth-card-wide" : "")}>{children}</div>
         </main>
       </div>
     </div>

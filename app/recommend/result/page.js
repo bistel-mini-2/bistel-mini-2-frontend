@@ -7,7 +7,7 @@
 // 구성: 스텝 인디케이터(2단계) · 결과 헤더 + 저장 · 추천 카드 리스트 ·
 //       하단 "더 많은 정책 보기".
 // =========================================================================
-import { useState } from "react";
+import { startTransition, useEffect, useState } from "react";
 import Link from "next/link";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
@@ -15,11 +15,34 @@ import StepIndicator from "@/app/components/StepIndicator";
 import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { getRecommended } from "@/app/data/policies";
-import { DEFAULT_FAMILY } from "@/app/data/family";
+import {
+  DEFAULT_FAMILY,
+  FAMILY_PROFILE_KEY,
+  normalizeFamilyProfile,
+} from "@/app/data/family";
 
 export default function RecommendResultPage() {
-  const recommended = getRecommended();
+  const [family, setFamily] = useState(DEFAULT_FAMILY);
   const [saved, setSaved] = useState(false);
+  const recommended = getRecommended(family);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
+    if (!storedFamily) {
+      return;
+    }
+
+    try {
+      const nextFamily = normalizeFamilyProfile(JSON.parse(storedFamily));
+      startTransition(() => setFamily(nextFamily));
+    } catch {
+      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
+    }
+  }, []);
 
   return (
     <div className="dd-page">
@@ -34,7 +57,7 @@ export default function RecommendResultPage() {
               <Icon name="Sparkles" size={14} /> AI 맞춤 추천 완료
             </span>
             <h1 className="dd-title mt-2" style={{ fontSize: 30 }}>
-              {DEFAULT_FAMILY.name}님께 추천하는 맞춤 정책이에요!
+              {family.name}님께 추천하는 맞춤 정책이에요!
             </h1>
             <p className="mt-2 mb-0" style={{ fontSize: 16, color: "var(--dd-stone-600)" }}>
               입력하신 가족 상황과 가장 잘 맞는 순서로 정리했어요.

@@ -1,5 +1,6 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import "./globals.css";
+import { AuthContextProvider } from "@/contexts/AuthContext";
 
 export const metadata = {
   title: "도담 — 가족·육아 복지 도우미",
@@ -22,7 +23,9 @@ export default function RootLayout({ children }) {
           rel="stylesheet"
         />
       </head>
-      <body>{children}</body>
+      <body>
+        <AuthContextProvider>{children}</AuthContextProvider>
+      </body>
     </html>
   );
 }
