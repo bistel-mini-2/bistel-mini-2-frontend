@@ -1,5 +1,4 @@
-import axios from "axios";
-import "./axiosConfig";
+import { axios } from "./axiosConfig";
 
 const signup = (payload) => axios.post("/auth/signup", payload);
 
