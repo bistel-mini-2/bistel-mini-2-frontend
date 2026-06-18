@@ -14,6 +14,7 @@ source:
 - Recommendation and eligibility analysis use `request_id` based asynchronous flow by default.
 - Internal eligibility decisions are reduced to 3 user-facing states.
 - Follow-up questions are allowed only when the answer is likely to change the result, and should be limited to at most 2 questions.
+- Policy AI summary is a shared explanation-generation feature: policy detail renders it as cards, while chat renders the same engine output as conversational text.
 
 ## 2. Global Response Shape
 
@@ -42,20 +43,34 @@ identifier_contract:
   reason: "The current frontend dummy data and routing use string slugs instead of numeric ids."
 ```
 
-### 3.2 User-Facing Eligibility Status
+### 3.2 AI Status Contracts
 
 ```ts
-type UserStatus =
-  | "RECOMMENDABLE"
-  | "NEEDS_CONFIRMATION"
-  | "DIFFICULT_TO_RECOMMEND";
-
-type AsyncStatus =
+type RequestStatus =
+  | "READY"
   | "PROCESSING"
   | "COMPLETED"
   | "FOLLOW_UP_REQUIRED"
   | "FAILED";
+
+// Backend internal assessment state. Do not use this directly as a user-facing UI label.
+type AssessmentStatus =
+  | "LIKELY_MATCH"
+  | "NEEDS_MORE_INFO"
+  | "NOT_MATCH"
+  | "INSUFFICIENT_PROFILE"
+  | "CONFLICTING_PROFILE";
+
+type UserStatus =
+  | "RECOMMENDABLE"
+  | "NEEDS_CONFIRMATION"
+  | "DIFFICULT_TO_RECOMMEND";
 ```
+
+- `status` is a `RequestStatus` and controls request lifecycle UI.
+- `user_status` is a `UserStatus` and controls user-facing recommendation/eligibility judgment UI.
+- `AssessmentStatus` is for backend internal judgment only. If it appears in a response, frontend screens still prefer `user_status`.
+- `loading`, `success`, `warning`, and `error` are frontend UI variants, not API status values.
 
 ### 3.3 Frontend Condition Input
 
@@ -66,6 +81,38 @@ type SelectedConditions = {
   income?: "low" | "mid1" | "mid2" | "high" | "unknown" | string;
   region?: "seoul" | "gyeonggi" | "metro" | "etc" | string;
   special?: Array<"single" | "multi" | "disabled" | "many" | "dual" | string>;
+};
+
+type Evidence = {
+  snippet: string;
+  source_title: string;
+  source_url: string;
+  evidence_role: string;
+};
+
+type PolicyAiSummary = {
+  policy_id: string;
+  slug: string;
+  easy_summary: string;
+  key_points: Array<{ label: string; content: string }>;
+  target_summary: string;
+  benefit_summary: string;
+  application_summary: string;
+  cautions: string[];
+  next_actions: Array<{
+    action: "eligibility" | "compare" | "apply" | "chat";
+    label: string;
+    href?: string;
+  }>;
+  evidences: Evidence[];
+  generated_at: string;
+  summary_version: string;
+};
+
+type PolicyAiSummaryResponse = {
+  request_id?: string;
+  status: RequestStatus;
+  summary: PolicyAiSummary | null;
 };
 ```
 
@@ -143,11 +190,13 @@ type SelectedConditions = {
   query_params:
     - query
     - category
+    - tags
     - region_code
+    - sort
     - page
     - size
   response: "policy list, pagination"
-  notes: "정책 탐색 화면 기본 진입점"
+  notes: "정책 탐색 화면 기본 진입점. 기능명세서의 정책 검색, 정책 필터/정렬을 이 목록 API의 query params로 흡수한다."
 
 - id: policies_detail
   name: "정책 상세 조회"
@@ -196,6 +245,95 @@ type SelectedConditions = {
     error: null
     meta: {}
   notes: "정책 상세, 비교, 가능성 분석, 신청 준비, 챗 추천 카드가 공통으로 참조하는 핵심 정책 응답. official_url은 frontend dummy의 url과 동일 역할."
+
+- id: policy_ai_summary_get
+  name: "정책 AI 요약 조회"
+  method: GET
+  path: "/api/v1/policies/{policy_id}/ai-summary"
+  auth: "optional"
+  priority: "high"
+  owner: "탐색/상세"
+  path_params:
+    - policy_id
+  query_params:
+    - audience
+    - include_evidences
+  response_schema:
+    data:
+      request_id: "string?"
+      status: "READY | PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
+      summary: "PolicyAiSummary | null"
+      summary_schema_when_completed:
+        policy_id: "string"
+        slug: "string"
+        easy_summary: "string"
+        key_points:
+          - label: "string"
+            content: "string"
+        target_summary: "string"
+        benefit_summary: "string"
+        application_summary: "string"
+        cautions: "string[]"
+        next_actions:
+          - action: "eligibility | compare | apply | chat"
+            label: "string"
+            href: "string?"
+        evidences:
+          - snippet: "string"
+            source_title: "string"
+            source_url: "string"
+            evidence_role: "summary | target | benefit | application | caution"
+        generated_at: "datetime"
+        summary_version: "string"
+    meta:
+      source: "cache | generated"
+  notes: "status는 RequestStatus이며 프론트는 getRequestStatusUi(status)로 로딩/완료/오류 UI를 표시한다. COMPLETED이면 summary를 렌더링하고, PROCESSING이면 로딩 UI, FAILED이면 에러 UI를 표시한다. 정책 AI 요약은 사용자 추천 판단이 아니므로 user_status를 사용하지 않는다."
+
+- id: policy_ai_summary_create
+  name: "정책 AI 요약 생성/갱신"
+  method: POST
+  path: "/api/v1/policies/{policy_id}/ai-summary"
+  auth: "required"
+  priority: "high"
+  owner: "탐색/상세"
+  path_params:
+    - policy_id
+  body:
+    force_refresh: "boolean?"
+    audience: "general | parent | pregnant | low_income | custom?"
+    user_context: "SelectedConditions?"
+  response_schema:
+    data:
+      policy_id: "string"
+      status: "READY | PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
+      summary: "PolicyAiSummary?"
+      request_id: "string?"
+    meta:
+      source: "cache | generated"
+  notes: "status는 RequestStatus이며 API 값으로 loading/done/error를 내려주지 않는다. 프론트는 getRequestStatusUi(status)를 사용한다. 캐시가 있으면 COMPLETED와 summary를 즉시 반환하고, 생성 비용이 크면 PROCESSING과 request_id를 반환한다. 정책 AI 요약은 사용자 추천 판단이 아니므로 user_status를 사용하지 않는다."
+
+- id: policy_related_list
+  name: "관련 정책 조회"
+  method: GET
+  path: "/api/v1/policies/{policy_id}/related"
+  auth: "optional"
+  priority: "low"
+  owner: "탐색/상세"
+  path_params:
+    - policy_id
+  query_params:
+    - limit
+  response_schema:
+    data:
+      items:
+        - policy_id: "string"
+          slug: "string"
+          name: "string"
+          summary: "string"
+          tag: "string"
+          tagTone: "string"
+          relation_reason: "string"
+  notes: "기능명세서의 관련 정책 기능. 정책 상세 응답의 related에 포함해도 되지만 독립 조회 API가 있으면 캐시/지연 로딩에 유리하다."
 ```
 
 ### 4.3 Favorites
@@ -278,7 +416,7 @@ type SelectedConditions = {
     success: true
     data:
       request_id: "string"
-      status: "PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
+      status: "READY | PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
       user_status: "RECOMMENDABLE | NEEDS_CONFIRMATION | DIFFICULT_TO_RECOMMEND?"
       reason_summary: "string?"
       recommendations:
@@ -388,7 +526,7 @@ type SelectedConditions = {
   response_schema:
     data:
       request_id: "string"
-      status: "PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
+      status: "READY | PROCESSING | COMPLETED | FOLLOW_UP_REQUIRED | FAILED"
       policy_id: "string"
       slug: "string"
       policy_name: "string"
@@ -591,7 +729,7 @@ type SelectedConditions = {
     item_status: "PENDING | DONE"
     note: "string?"
   response: "updated checklist item"
-  notes: "PENDING 또는 DONE 중심으로 관리"
+  notes: "PENDING 또는 DONE 중심으로 관리. 이 값은 신청 체크리스트 항목 상태이며 AI RequestStatus와 무관."
 ```
 
 ### 4.8 Chat
@@ -683,7 +821,67 @@ type SelectedConditions = {
   owner: "추천/회원"
   request: "user_id, raw_query?, selected_conditions?, chat_session_id?"
   response: "request_id, status, parsed_query_json, merged_condition_json, questions, recommendations"
-  notes: "외부 추천 요청 생성/조회 API 뒤에서 호출되는 유스케이스 계층"
+  notes: "외부 추천 요청 생성/조회 API 뒤에서 호출되는 유스케이스 계층. ConditionAnalysis -> profile merge -> CandidateSearch -> assessment/RAG -> result formatting 순서로 호출한다."
+
+- id: condition_analysis_service_analyze
+  type: "service contract"
+  name: "ConditionAnalysisService.analyze"
+  category: "추천"
+  owner: "추천/회원"
+  request: "raw_query?, selected_conditions?"
+  response_schema:
+    parsed_query_json:
+      region_code: "string?"
+      income_bracket: "string?"
+      life_stage: "string?"
+      child_age_range: "string?"
+      dual_income: "boolean?"
+      household_type: "string?"
+      special_flags: "string[]"
+    input_issues:
+      - field_name: "string"
+        issue_type: "missing | ambiguous | invalid"
+        message: "string"
+        priority: "number"
+    follow_up_candidates:
+      - field_name: "string"
+        question_text: "string"
+        reason: "string"
+  notes: "기능명세서의 AI 조건 분석. 자연어/필드 입력을 공통 조건 JSON으로 정규화하고, 내부 이상 상태는 그대로 사용자에게 노출하지 않는다."
+
+- id: profile_condition_merge_service_merge
+  type: "service contract"
+  name: "ProfileConditionMergeService.merge"
+  category: "추천"
+  owner: "추천/회원"
+  request: "user_id, parsed_query_json, saved_profile_json?"
+  response_schema:
+    merged_condition_json: "SelectedConditions normalized for rule engine"
+    profile_conflict_json:
+      - field_name: "string"
+        saved_value: "unknown"
+        current_value: "unknown"
+        selected_value: "unknown"
+        rule: "current_input_wins"
+    missing_core_fields: "string[]"
+  notes: "저장 프로필과 현재 입력을 병합한다. 충돌 시 현재 입력 우선 원칙을 적용하고, 후보 검색은 merged_condition_json 기준으로만 수행한다."
+
+- id: recommendation_candidate_service_search
+  type: "service contract"
+  name: "RecommendationCandidateService.search"
+  category: "추천"
+  owner: "추천/회원"
+  request: "merged_condition_json, policy_rules, policy_basic_info"
+  response_schema:
+    candidates:
+      - policy_id: "string"
+        slug: "string"
+        survived_reasons: "string[]"
+        filter_match_json: "object"
+    excluded:
+      - policy_id: "string"
+        reason: "string"
+  notes: "기능명세서의 정책 후보 검색. LLM이 모든 정책을 직접 읽지 않고, Rule Filter Node가 명확히 아닌 정책을 제외한다. 결과는 recommendation_candidate에 저장한다."
 
 - id: eligibility_service_analyze
   type: "service contract"
@@ -735,9 +933,40 @@ type SelectedConditions = {
   name: "PolicySummaryService.summarize"
   category: "정책탐색"
   owner: "탐색/상세"
-  request: "policy_id, user_id?"
-  response: "easy_summary, key_points, evidences"
-  notes: "정책 상세 화면 AI 요약용"
+  request: "policy_id, user_id?, user_context?, audience?, force_refresh?"
+  response: "easy_summary, key_points, target_summary, benefit_summary, application_summary, cautions, next_actions, evidences, generated_at, summary_version"
+  notes: "기능명세서의 정책 설명 생성 엔진. 정책 문서를 쉬운 설명으로 변환하는 로직 1개를 카드형 상세, 챗봇 대화 답변에서 함께 사용한다."
+
+- id: policy_explanation_engine_generate
+  type: "engine contract"
+  name: "PolicyExplanationEngine.generate"
+  category: "공통"
+  owner: "탐색/상세"
+  request: "policy_document, policy_chunks?, user_context?, render_mode: card | chat"
+  response_schema:
+    easy_summary: "string"
+    key_points: "array"
+    action_hints: "array"
+    evidences: "array"
+    rendered_text: "string?"
+  notes: "정책 AI요약과 RAG 답변을 통합한 공통 엔진. 상세 화면은 card mode, 챗봇은 chat mode로 렌더링한다."
+
+- id: rag_policy_chunk_search
+  type: "tool contract"
+  name: "search_policy_chunks"
+  category: "공통"
+  owner: "판단/비교"
+  request: "query, policy_ids?, top_k?, evidence_role?"
+  response_schema:
+    chunks:
+      - policy_id: "string"
+        chunk_id: "string"
+        snippet: "string"
+        source_title: "string"
+        source_url: "string"
+        score: "number"
+        evidence_role: "string"
+  notes: "정책 chunk 의미 검색 + 근거 반환. 추천, 지원가능성분석, 비교, 챗봇 답변, AI 요약에서 공통으로 사용하는 근거 검색 모듈."
 ```
 
 ## 6. Internal UI/Response Contracts
@@ -763,11 +992,34 @@ type SelectedConditions = {
     - easy_summary
     - detail
     - related
+    - ai_summary
+    - next_actions
   used_by:
     - "/policies/[id]"
     - "/compare"
     - "/apply"
     - "/eligibility"
+  notes: "정책 상세는 기본정보 + AI요약 + 다음 액션을 함께 보여준다. ai_summary는 별도 API로 지연 로딩하거나 정책 상세 응답에 포함할 수 있다."
+
+- id: policy_ai_summary_response_contract
+  name: "정책 AI 요약 응답 계약"
+  type: "response contract"
+  request: "policy_id, optional user context"
+  required_fields:
+    - status
+    - summary
+  summary_fields_when_completed:
+    - easy_summary
+    - key_points
+    - target_summary
+    - benefit_summary
+    - application_summary
+    - cautions
+    - next_actions
+    - evidences
+    - generated_at
+    - summary_version
+  notes: "status는 RequestStatus이며 getRequestStatusUi(status)로 표시한다. COMPLETED일 때 summary 필드를 렌더링한다. 정책 AI 요약은 사용자 추천 판단이 아니므로 user_status를 사용하지 않는다."
 
 - id: eligibility_ui_response_contract
   name: "지원 가능성 UI 응답 계약"
@@ -798,14 +1050,16 @@ type SelectedConditions = {
 
 1. Implement common response wrapper and authentication boundary.
 2. Implement policy identifier contract using stable string `policy_id`/`slug`.
-3. Implement policy list/detail because recommendation, comparison, eligibility, application prep, and chat cards depend on these fields.
-4. Implement profile read/update and condition normalization.
-5. Implement async request lifecycle tables/services for recommendation and eligibility.
-6. Implement recommendation create/get/save and recommendation history.
-7. Implement eligibility create/get and convert internal states into `UserStatus` plus `banner_level`.
-8. Implement comparison create and compare history.
-9. Implement application preparation, progress, and checklist APIs.
-10. Implement chat session/message APIs using supervisor routing output mapped to the chat UI payload.
+3. Implement policy list/detail/search/filter because recommendation, comparison, eligibility, application prep, AI summary, and chat cards depend on these fields.
+4. Implement `search_policy_chunks` so AI summary, eligibility, comparison, recommendation, and chat can return evidence-backed answers.
+5. Implement policy AI summary APIs and `PolicyExplanationEngine.generate`.
+6. Implement profile read/update, condition normalization, profile merge, and candidate search.
+7. Implement async request lifecycle tables/services for recommendation and eligibility.
+8. Implement recommendation create/get/save and recommendation history.
+9. Implement eligibility create/get and convert internal states into `UserStatus` plus `banner_level`.
+10. Implement comparison create and compare history.
+11. Implement application preparation, progress, and checklist APIs.
+12. Implement chat session/message APIs using supervisor routing output mapped to the chat UI payload.
 
 ## 8. Known Contract Gaps to Resolve During Implementation
 
@@ -815,4 +1069,6 @@ type SelectedConditions = {
 - `policy_id` and `slug` may be duplicated fields; choose one canonical internal key and expose both only if frontend compatibility needs it.
 - Async polling interval, timeout, and retry semantics are not specified.
 - Follow-up answer submission endpoint is not explicitly listed; current design only exposes questions in result responses.
+- AI summary cache policy is not specified: decide TTL, refresh trigger, summary_version format, and whether generation is sync or `request_id` based async.
+- RAG chunk schema and indexing pipeline are not specified here, but `search_policy_chunks` is now a required shared internal tool contract.
 - Admin APIs are categorized in the database schema but no concrete admin endpoint rows were found in the fetched source.

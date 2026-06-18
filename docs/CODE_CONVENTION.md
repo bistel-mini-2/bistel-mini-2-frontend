@@ -48,9 +48,10 @@ policy-filter.js
 - `app/layout.js`: 전체 앱 공통 레이아웃
 - `app/page.js`: 루트 경로(`/`) 페이지
 - `app/globals.css`: 전역 스타일
+- `app/components/`: 재사용 가능한 UI 컴포넌트
+- `app/types/`: 공통 타입 설명과 UI 매핑 helper
 - `public/`: 이미지, 아이콘 등 정적 파일
 - `docs/`: 문서
-- `components/`: 추후 공통 컴포넌트 위치
 - `apis/`: 추후 API 요청 설정과 함수 위치
 
 ## Next.js App Router 작성 규칙
@@ -98,6 +99,8 @@ apis/
 - 백엔드 API 주소를 컴포넌트 코드에 직접 작성하지 않습니다.
 - API 요청 함수는 화면 컴포넌트와 분리합니다.
 - API 응답 구조가 바뀌면 관련 문서나 타입 설명을 함께 수정합니다.
+- AI API 응답의 `status`/`user_status`는 [`API_SPEC_AI.md`](./API_SPEC_AI.md)와 [`AI_STATUS_UI_MAPPING.md`](./AI_STATUS_UI_MAPPING.md)를 기준으로 해석합니다.
+- AI 상태 UI는 화면마다 직접 분기하지 말고 `app/types/aiStatus.js`의 공통 helper를 재사용합니다.
 - 정책 slug와 추천 입력 enum은 [`FIELD_MAPPING.md`](./FIELD_MAPPING.md)를 기준으로 사용합니다.
 
 ## 스타일 규칙

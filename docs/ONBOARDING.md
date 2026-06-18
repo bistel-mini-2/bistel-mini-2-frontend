@@ -85,7 +85,7 @@ npm run dev
 - Tailwind 사용하지 않음
 - App Router 사용
 - `src` 디렉터리 사용하지 않음
-- import alias 커스터마이징하지 않음
+- import alias는 `@/*` → `./*` 기준으로 사용
 
 ## GitHub 협업 기본 흐름
 
