@@ -16,13 +16,17 @@ export function useLiked() {
 
   // 최초 마운트 시 저장값 로드 (SSR 하이드레이션 불일치 방지: 기본값으로 먼저 렌더)
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(KEY);
-      if (raw) setIds(JSON.parse(raw));
-    } catch (e) {
-      /* noop */
-    }
-    setReady(true);
+    const timer = window.setTimeout(() => {
+      try {
+        const raw = localStorage.getItem(KEY);
+        if (raw) setIds(JSON.parse(raw));
+      } catch {
+        /* noop */
+      }
+      setReady(true);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
   }, []);
 
   // 변경 시 저장
@@ -30,7 +34,7 @@ export function useLiked() {
     if (!ready) return;
     try {
       localStorage.setItem(KEY, JSON.stringify(ids));
-    } catch (e) {
+    } catch {
       /* noop */
     }
   }, [ids, ready]);

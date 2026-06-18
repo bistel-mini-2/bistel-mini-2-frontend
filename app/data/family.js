@@ -53,6 +53,7 @@ export const FAMILY_OPTIONS = {
     { value: "disabled", label: "장애인 가구" },
     { value: "many", label: "다자녀 가정(2명 이상)" },
     { value: "dual", label: "저소득 가구" },
+    { value: "veteran", label: "보훈대상자" } 
   ],
 };
 
