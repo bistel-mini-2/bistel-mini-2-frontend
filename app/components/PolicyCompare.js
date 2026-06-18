@@ -19,14 +19,8 @@ const ROWS = [
   { key: "method", label: "신청방법" },
 ];
 
-export default function PolicyCompare({ initialA = "parent-allowance", initialB = "child-allowance" }) {
-  const [aId, setAId] = useState(initialA);
-  const [bId, setBId] = useState(initialB);
-
-  const a = getPolicy(aId);
-  const b = getPolicy(bId);
-
-  const SummaryCard = ({ p, slot }) => (
+function SummaryCard({ p, slot }) {
+  return (
     <div className="dd-card h-100" style={{ padding: 18 }}>
       <div className="d-flex align-items-center gap-2 mb-2">
         <span className="dd-pill dd-pill-outline">정책 {slot}</span>
@@ -53,6 +47,14 @@ export default function PolicyCompare({ initialA = "parent-allowance", initialB 
       )}
     </div>
   );
+}
+
+export default function PolicyCompare({ initialA = "parent-allowance", initialB = "child-allowance" }) {
+  const [aId, setAId] = useState(initialA);
+  const [bId, setBId] = useState(initialB);
+
+  const a = getPolicy(aId);
+  const b = getPolicy(bId);
 
   return (
     <div className="d-flex flex-column gap-4">

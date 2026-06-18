@@ -16,6 +16,7 @@ import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
   FAMILY_PROFILE_KEY,
+  createRecommendationPayload,
   familyRows,
   normalizeFamilyProfile,
 } from "@/app/data/family";
@@ -26,25 +27,12 @@ export default function RecommendPage() {
   const normalizedFamily = normalizeFamilyProfile(family);
 
   const set = (key, value) => setFamily((f) => ({ ...f, [key]: value }));
-  const toggleChildAge = (value) =>
-    setFamily((f) => {
-      const nextFamily = normalizeFamilyProfile(f);
-      const isSelected = nextFamily.childrenAges.includes(value);
-
-      if (isSelected && nextFamily.childrenAges.length === 1) {
-        return nextFamily;
-      }
-
-      const childrenAges = isSelected
-        ? nextFamily.childrenAges.filter((age) => age !== value)
-        : [...nextFamily.childrenAges, value];
-
-      return {
-        ...nextFamily,
-        childAge: childrenAges[0],
-        childrenAges,
-      };
-    });
+  const selectChildAge = (value) =>
+    setFamily((family) => ({
+      ...family,
+      childAge: value,
+      childrenAges: [value],
+    }));
   const toggleSpecial = (value) =>
     setFamily((f) => ({
       ...f,
@@ -56,10 +44,15 @@ export default function RecommendPage() {
   const summaryRows = familyRows(normalizedFamily);
 
   const goResult = () => {
+    const recommendationPayload = createRecommendationPayload(normalizedFamily);
+
     if (typeof window !== "undefined") {
       window.localStorage.setItem(
         FAMILY_PROFILE_KEY,
-        JSON.stringify(normalizedFamily)
+        JSON.stringify({
+          ...normalizedFamily,
+          ...recommendationPayload,
+        })
       );
     }
 
@@ -119,15 +112,15 @@ export default function RecommendPage() {
 
               {/* 자녀 연령 */}
               <div className="mt-4">
-                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(하나 선택)</span></label>
                 <div className="d-flex flex-wrap gap-2">
                   {FAMILY_OPTIONS.childAge.map((o) => {
-                    const on = normalizedFamily.childrenAges.includes(o.value);
+                    const on = normalizedFamily.childAge === o.value;
                     return (
                       <button
                         key={o.value}
                         type="button"
-                        onClick={() => toggleChildAge(o.value)}
+                        onClick={() => selectChildAge(o.value)}
                         className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
                         style={{ padding: "9px 16px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
                       >

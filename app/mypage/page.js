@@ -142,23 +142,12 @@ export default function MyPage() {
     setFamilySaved(false);
   };
 
-  const toggleFamilyDraftChildAge = (value) => {
+  const selectFamilyDraftChildAge = (value) => {
     setFamilyDraft((family) => {
-      const nextFamily = normalizeFamilyProfile(family);
-      const isSelected = nextFamily.childrenAges.includes(value);
-
-      if (isSelected && nextFamily.childrenAges.length === 1) {
-        return nextFamily;
-      }
-
-      const childrenAges = isSelected
-        ? nextFamily.childrenAges.filter((age) => age !== value)
-        : [...nextFamily.childrenAges, value];
-
       return {
-        ...nextFamily,
-        childAge: childrenAges[0],
-        childrenAges,
+        ...family,
+        childAge: value,
+        childrenAges: [value],
       };
     });
     setFamilySaved(false);
@@ -247,16 +236,16 @@ export default function MyPage() {
                   </div>
 
                   <div>
-                    <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                    <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(하나 선택)</span></label>
                     <div className="d-flex flex-wrap gap-2">
                       {FAMILY_OPTIONS.childAge.map((o) => {
-                        const on = normalizeFamilyProfile(familyDraft).childrenAges.includes(o.value);
+                        const on = normalizeFamilyProfile(familyDraft).childAge === o.value;
                         return (
                           <button
                             key={o.value}
                             type="button"
                             className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
-                            onClick={() => toggleFamilyDraftChildAge(o.value)}
+                            onClick={() => selectFamilyDraftChildAge(o.value)}
                             style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
                           >
                             {on && <Icon name="Check" size={14} />}
