@@ -1,10 +1,20 @@
 "use client";
 
-import { createContext, startTransition, useEffect, useState } from "react";
+import {
+  createContext,
+  startTransition,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
 import axiosConfig from "@/apis/axiosConfig";
-
-const USER_KEY = "dodam_user";
-const ACCESS_TOKEN_KEY = "dodam_access_token";
+import {
+  AUTH_CHANGED_EVENT,
+  clearStoredAuth,
+  isAuthStorageEvent,
+  readStoredAuth,
+  saveStoredAuth,
+} from "@/app/utils/authStorage";
 
 export const AuthContext = createContext({
   user: null,
@@ -17,102 +27,66 @@ export const AuthContext = createContext({
   setAccessToken: () => {},
 });
 
-const removeStoredAuth = (storage) => {
-  storage.removeItem(USER_KEY);
-  storage.removeItem(ACCESS_TOKEN_KEY);
-};
-
-const saveStoredAuth = (storage, user, accessToken) => {
-  storage.setItem(USER_KEY, JSON.stringify(user));
-  storage.setItem(ACCESS_TOKEN_KEY, accessToken);
-};
-
-const readStoredAuth = () => {
-  if (typeof window === "undefined") {
-    return { user: null, accessToken: null };
-  }
-
-  const readFromStorage = (storage) => {
-    const storedUser = storage.getItem(USER_KEY);
-    const storedAccessToken = storage.getItem(ACCESS_TOKEN_KEY);
-
-    if (!storedUser || !storedAccessToken) {
-      return null;
-    }
-
-    try {
-      return {
-        user: JSON.parse(storedUser),
-        accessToken: storedAccessToken,
-      };
-    } catch {
-      removeStoredAuth(storage);
-      return null;
-    }
-  };
-
-  return (
-    readFromStorage(window.localStorage) ||
-    readFromStorage(window.sessionStorage) || {
-      user: null,
-      accessToken: null,
-    }
-  );
-};
-
 export function AuthContextProvider({ children }) {
   const [user, setUser] = useState(null);
   const [accessToken, setAccessToken] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
+  const applyAuth = useCallback((nextAuth) => {
+    setUser(nextAuth.user);
+    setAccessToken(nextAuth.accessToken);
 
-    const storedAuth = readStoredAuth();
-
-    startTransition(() => {
-      setUser(storedAuth.user);
-      setAccessToken(storedAuth.accessToken);
-      setIsLoading(false);
-    });
-
-    if (storedAuth.accessToken) {
-      axiosConfig.addAuthHeader(storedAuth.accessToken);
+    if (nextAuth.accessToken) {
+      axiosConfig.addAuthHeader(nextAuth.accessToken);
     } else {
       axiosConfig.removeAuthHeader();
     }
   }, []);
 
-  const loginAuth = (nextUser, nextAccessToken, remember = false) => {
+  const syncAuthFromStorage = useCallback(() => {
+    applyAuth(readStoredAuth());
+  }, [applyAuth]);
+
+  useEffect(() => {
     if (typeof window !== "undefined") {
-      const targetStorage = remember
-        ? window.localStorage
-        : window.sessionStorage;
-      const otherStorage = remember
-        ? window.sessionStorage
-        : window.localStorage;
+      startTransition(() => {
+        syncAuthFromStorage();
+        setIsLoading(false);
+      });
 
-      saveStoredAuth(targetStorage, nextUser, nextAccessToken);
-      removeStoredAuth(otherStorage);
+      const handleAuthChanged = () => syncAuthFromStorage();
+      const handleStorage = (event) => {
+        if (isAuthStorageEvent(event)) {
+          syncAuthFromStorage();
+        }
+      };
+
+      window.addEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+      window.addEventListener("storage", handleStorage);
+
+      return () => {
+        window.removeEventListener(AUTH_CHANGED_EVENT, handleAuthChanged);
+        window.removeEventListener("storage", handleStorage);
+      };
     }
+  }, [syncAuthFromStorage]);
 
-    setUser(nextUser);
-    setAccessToken(nextAccessToken);
-    axiosConfig.addAuthHeader(nextAccessToken);
-  };
+  const loginAuth = useCallback(
+    (nextUser, nextAccessToken, remember = true) => {
+      saveStoredAuth({
+        user: nextUser,
+        accessToken: nextAccessToken,
+        remember,
+      });
+      applyAuth({ user: nextUser, accessToken: nextAccessToken });
+    },
+    [applyAuth]
+  );
 
-  const logoutAuth = () => {
-    if (typeof window !== "undefined") {
-      removeStoredAuth(window.localStorage);
-      removeStoredAuth(window.sessionStorage);
-    }
-
-    setUser(null);
-    setAccessToken(null);
-    axiosConfig.removeAuthHeader();
-  };
+  const logoutAuth = useCallback(() => {
+    clearStoredAuth();
+    applyAuth({ user: null, accessToken: null });
+  }, [applyAuth]);
 
   return (
     <AuthContext.Provider
