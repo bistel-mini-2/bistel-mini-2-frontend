@@ -1,5 +1,5 @@
 // =========================================================================
-// 도담 — 가족 상황 입력 폼 옵션 & 기본값 (더미)
+// 도담 — 가족 상황 입력 폼 옵션 & 추천 요청 계약
 // 정책추천 폼 / 입력 요약 / 지원 가능성 분석에서 공유.
 // =========================================================================
 
@@ -93,13 +93,20 @@ export function normalizeFamilyProfile(family = {}) {
 }
 
 export function createRecommendationPayload(family = DEFAULT_FAMILY) {
+  if (
+    Object.prototype.hasOwnProperty.call(family, "special") &&
+    !Array.isArray(family.special)
+  ) {
+    throw new Error("Invalid family profile value: special must be an array");
+  }
+
   const profile = normalizeFamilyProfile(family);
   const payload = {
     stage: profile.stage,
     childAge: profile.childAge,
     income: profile.income,
     region: profile.region,
-    special: profile.special,
+    special: [...profile.special],
   };
 
   for (const [key, value] of Object.entries(payload)) {
