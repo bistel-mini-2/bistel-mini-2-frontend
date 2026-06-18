@@ -14,8 +14,10 @@ import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 import { AuthContext } from "@/contexts/AuthContext";
 import familyProfileApi from "@/apis/familyProfileApi";
+import userApi from "@/apis/userApi";
 import { getPolicy, getPolicies } from "@/app/data/policies";
 import {
   DEFAULT_FAMILY,
@@ -27,7 +29,8 @@ import {
 import { useLiked } from "@/app/data/useLiked";
 
 const TABS = [
-  { key: "profile", label: "가족 프로필", icon: "User" },
+  { key: "account", label: "계정 정보", icon: "User" },
+  { key: "profile", label: "가족 프로필", icon: "Users" },
   { key: "liked", label: "관심 정책", icon: "Heart" },
   { key: "checklist", label: "신청 체크리스트", icon: "ListChecks" },
   { key: "recHistory", label: "추천 이력", icon: "Target" },
@@ -58,6 +61,60 @@ const INIT_CHAT = [
 ];
 
 const tileTone = (t) => (t === "coral" ? "rose" : t);
+const NICKNAME_MIN_LENGTH = 2;
+const NICKNAME_MAX_LENGTH = 100;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
+const ENGLISH_LETTER_PATTERN = /[A-Za-z]/;
+const NUMBER_PATTERN = /\d/;
+const SPECIAL_CHARACTER_PATTERN = /[!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~]/;
+const EMPTY_PASSWORD_DRAFT = {
+  currentPassword: "",
+  newPassword: "",
+  newPasswordConfirm: "",
+};
+
+const getNicknameValidationMessage = (nickname) => {
+  const trimmedNickname = nickname.trim();
+
+  if (trimmedNickname.length < NICKNAME_MIN_LENGTH) {
+    return "닉네임은 2자 이상 입력해주세요.";
+  }
+
+  if (trimmedNickname.length > NICKNAME_MAX_LENGTH) {
+    return "닉네임은 100자 이하로 입력해주세요.";
+  }
+
+  return "";
+};
+
+const getPasswordValidationMessage = (password) => {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return "새 비밀번호는 8자 이상 입력해주세요.";
+  }
+
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return "새 비밀번호는 72자 이하로 입력해주세요.";
+  }
+
+  if (/\s/.test(password)) {
+    return "새 비밀번호에는 공백을 사용할 수 없어요.";
+  }
+
+  if (!ENGLISH_LETTER_PATTERN.test(password)) {
+    return "새 비밀번호에는 영문자를 1개 이상 포함해주세요.";
+  }
+
+  if (!NUMBER_PATTERN.test(password)) {
+    return "새 비밀번호에는 숫자를 1개 이상 포함해주세요.";
+  }
+
+  if (!SPECIAL_CHARACTER_PATTERN.test(password)) {
+    return "새 비밀번호에는 특수문자를 1개 이상 포함해주세요.";
+  }
+
+  return "";
+};
 
 // 리스트 상단 — 건수 + 전체 삭제
 function ListHeader({ text, onClear, label = "전체 삭제" }) {
@@ -98,8 +155,22 @@ function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxW
 
 export default function MyPage() {
   const router = useRouter();
-  const { isAuthenticated, isLoading } = useContext(AuthContext);
-  const [tab, setTab] = useState("profile");
+  const {
+    user: authUser,
+    isAuthenticated,
+    isLoading,
+    updateUserAuth,
+  } = useContext(AuthContext);
+  const [tab, setTab] = useState("account");
+  const [userProfile, setUserProfile] = useState(authUser);
+  const [userDraft, setUserDraft] = useState({
+    nickname: authUser?.nickname || "",
+  });
+  const [passwordDraft, setPasswordDraft] = useState(EMPTY_PASSWORD_DRAFT);
+  const [isEditingUser, setIsEditingUser] = useState(false);
+  const [userSaved, setUserSaved] = useState(false);
+  const [userError, setUserError] = useState("");
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [familyProfile, setFamilyProfile] = useState(DEFAULT_FAMILY);
   const [familyDraft, setFamilyDraft] = useState(DEFAULT_FAMILY);
   const [isEditingFamily, setIsEditingFamily] = useState(false);
@@ -118,6 +189,42 @@ export default function MyPage() {
       router.replace("/login");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isLoading || !isAuthenticated) {
+      return;
+    }
+
+    let ignore = false;
+
+    const loadUserProfile = async () => {
+      try {
+        const nextUser = await userApi.getMe();
+        if (ignore || !nextUser) {
+          return;
+        }
+
+        startTransition(() => {
+          setUserProfile(nextUser);
+          setUserDraft({ nickname: nextUser.nickname || "" });
+          setUserError("");
+          updateUserAuth(nextUser);
+        });
+      } catch (error) {
+        if (!ignore) {
+          setUserError(
+            getApiErrorMessage(error, "계정 정보를 불러오지 못했어요.")
+          );
+        }
+      }
+    };
+
+    loadUserProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, isLoading, updateUserAuth]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoading || !isAuthenticated) {
@@ -152,6 +259,108 @@ export default function MyPage() {
       ignore = true;
     };
   }, [isAuthenticated, isLoading]);
+
+  const startUserEdit = () => {
+    setUserDraft({ nickname: userProfile?.nickname || "" });
+    setPasswordDraft({ ...EMPTY_PASSWORD_DRAFT });
+    setUserSaved(false);
+    setUserError("");
+    setIsEditingUser(true);
+  };
+
+  const cancelUserEdit = () => {
+    setUserDraft({ nickname: userProfile?.nickname || "" });
+    setPasswordDraft({ ...EMPTY_PASSWORD_DRAFT });
+    setUserSaved(false);
+    setUserError("");
+    setIsEditingUser(false);
+  };
+
+  const saveUserProfile = async () => {
+    if (isSavingUser) {
+      return;
+    }
+
+    const nickname = userDraft.nickname.trim();
+    const validationMessage = getNicknameValidationMessage(nickname);
+    const wantsPasswordChange = Object.values(passwordDraft).some(Boolean);
+
+    if (validationMessage) {
+      setUserError(validationMessage);
+      return;
+    }
+
+    if (wantsPasswordChange) {
+      if (!passwordDraft.currentPassword) {
+        setUserError("현재 비밀번호를 입력해주세요.");
+        return;
+      }
+
+      const passwordValidationMessage = getPasswordValidationMessage(
+        passwordDraft.newPassword
+      );
+
+      if (passwordValidationMessage) {
+        setUserError(passwordValidationMessage);
+        return;
+      }
+
+      if (passwordDraft.currentPassword === passwordDraft.newPassword) {
+        setUserError("새 비밀번호는 현재 비밀번호와 다르게 입력해주세요.");
+        return;
+      }
+
+      if (!passwordDraft.newPasswordConfirm) {
+        setUserError("새 비밀번호 확인을 입력해주세요.");
+        return;
+      }
+
+      if (passwordDraft.newPassword !== passwordDraft.newPasswordConfirm) {
+        setUserError("새 비밀번호가 일치하지 않아요.");
+        return;
+      }
+    }
+
+    setIsSavingUser(true);
+    setUserSaved(false);
+    setUserError("");
+
+    try {
+      const currentNickname = (userProfile?.nickname || "").trim();
+      let nextUser = userProfile;
+
+      if (nickname !== currentNickname) {
+        nextUser = await userApi.updateMe({ nickname });
+      }
+
+      if (wantsPasswordChange) {
+        await userApi.updatePassword({
+          current_password: passwordDraft.currentPassword,
+          new_password: passwordDraft.newPassword,
+        });
+      }
+
+      const savedUser = nextUser || { ...userProfile, nickname };
+
+      setUserProfile(savedUser);
+      setUserDraft({ nickname: savedUser?.nickname || nickname });
+      setPasswordDraft({ ...EMPTY_PASSWORD_DRAFT });
+      setIsEditingUser(false);
+      setUserSaved(true);
+      if (savedUser) {
+        updateUserAuth(savedUser);
+      }
+    } catch (error) {
+      setUserError(
+        getApiErrorMessage(
+          error,
+          "계정 정보를 저장하지 못했어요. 잠시 후 다시 시도해주세요."
+        )
+      );
+    } finally {
+      setIsSavingUser(false);
+    }
+  };
 
   const setFamilyDraftValue = (key, value) => {
     setFamilyDraft((family) => ({ ...family, [key]: value }));
@@ -259,6 +468,152 @@ export default function MyPage() {
         </div>
 
         <div className="mt-4">
+          {/* 계정 정보 */}
+          {tab === "account" && (
+            <div className="dd-card dd-card-lg" style={{ padding: 24, maxWidth: 640 }}>
+              <div className="d-flex align-items-center justify-content-between mb-3">
+                <strong style={{ fontSize: 16 }}>계정 정보</strong>
+                {isEditingUser ? (
+                  <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={cancelUserEdit} disabled={isSavingUser}>
+                    <Icon name="X" size={15} /> 취소
+                  </button>
+                ) : (
+                  <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={startUserEdit}>
+                    <Icon name="Pencil" size={15} /> 수정하기
+                  </button>
+                )}
+              </div>
+
+              {isEditingUser ? (
+                <div className="d-flex flex-column gap-3">
+                  <div>
+                    <label className="dd-label">닉네임</label>
+                    <div className="dd-field">
+                      <span className="dd-field-icon"><Icon name="User" size={18} /></span>
+                      <input
+                        className="dd-input"
+                        value={userDraft.nickname}
+                        onChange={(e) => {
+                          setUserDraft({ nickname: e.target.value });
+                          setUserSaved(false);
+                          setUserError("");
+                        }}
+                        minLength={NICKNAME_MIN_LENGTH}
+                        maxLength={NICKNAME_MAX_LENGTH}
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div style={{ borderTop: "1px solid var(--dd-stone-100)", paddingTop: 16 }}>
+                    <strong className="d-block mb-3" style={{ fontSize: 15 }}>비밀번호 변경</strong>
+                    <div className="d-flex flex-column gap-3">
+                      <div>
+                        <label className="dd-label">현재 비밀번호</label>
+                        <div className="dd-field">
+                          <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                          <input
+                            type="password"
+                            className="dd-input"
+                            value={passwordDraft.currentPassword}
+                            onChange={(e) => {
+                              setPasswordDraft((draft) => ({
+                                ...draft,
+                                currentPassword: e.target.value,
+                              }));
+                              setUserSaved(false);
+                              setUserError("");
+                            }}
+                            autoComplete="current-password"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="row g-2">
+                        <div className="col-12 col-md-6">
+                          <label className="dd-label">새 비밀번호</label>
+                          <div className="dd-field">
+                            <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                            <input
+                              type="password"
+                              className="dd-input"
+                              value={passwordDraft.newPassword}
+                              onChange={(e) => {
+                                setPasswordDraft((draft) => ({
+                                  ...draft,
+                                  newPassword: e.target.value,
+                                }));
+                                setUserSaved(false);
+                                setUserError("");
+                              }}
+                              minLength={PASSWORD_MIN_LENGTH}
+                              maxLength={PASSWORD_MAX_LENGTH}
+                              autoComplete="new-password"
+                            />
+                          </div>
+                        </div>
+                        <div className="col-12 col-md-6">
+                          <label className="dd-label">새 비밀번호 확인</label>
+                          <div className="dd-field">
+                            <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
+                            <input
+                              type="password"
+                              className="dd-input"
+                              value={passwordDraft.newPasswordConfirm}
+                              onChange={(e) => {
+                                setPasswordDraft((draft) => ({
+                                  ...draft,
+                                  newPasswordConfirm: e.target.value,
+                                }));
+                                setUserSaved(false);
+                                setUserError("");
+                              }}
+                              minLength={PASSWORD_MIN_LENGTH}
+                              maxLength={PASSWORD_MAX_LENGTH}
+                              autoComplete="new-password"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="d-flex gap-2 justify-content-end flex-wrap">
+                    <button type="button" className="dd-btn dd-btn-ghost" onClick={cancelUserEdit} disabled={isSavingUser}>
+                      취소
+                    </button>
+                    <button type="button" className="dd-btn dd-btn-coral" onClick={saveUserProfile} disabled={isSavingUser}>
+                      <Icon name="Check" size={16} /> {isSavingUser ? "저장 중..." : "저장하기"}
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="d-flex flex-column gap-2">
+                  {[
+                    { label: "닉네임", value: userProfile?.nickname || "미설정" },
+                    { label: "이메일", value: userProfile?.email || "-" },
+                  ].map((row) => (
+                    <div key={row.label} className="d-flex justify-content-between align-items-start gap-3 py-2" style={{ borderBottom: "1px solid var(--dd-stone-100)", fontSize: 14 }}>
+                      <span className="dd-subtle">{row.label}</span>
+                      <span className="fw-semibold text-end" style={{ color: "var(--dd-ink-80)" }}>{row.value}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {userSaved && (
+                <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-green)" }}>
+                  <Icon name="Check" size={13} /> 계정 정보가 저장됐어요.
+                </p>
+              )}
+              {userError && (
+                <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={13} /> {userError}
+                </p>
+              )}
+            </div>
+          )}
+
           {/* 가족 프로필 */}
           {tab === "profile" && (
             <div className="dd-card dd-card-lg" style={{ padding: 24, maxWidth: 640 }}>

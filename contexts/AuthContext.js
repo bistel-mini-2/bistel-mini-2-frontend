@@ -14,6 +14,7 @@ import {
   isAuthStorageEvent,
   readStoredAuth,
   saveStoredAuth,
+  updateStoredUser,
 } from "@/app/utils/authStorage";
 
 export const AuthContext = createContext({
@@ -23,6 +24,7 @@ export const AuthContext = createContext({
   isAuthenticated: false,
   loginAuth: () => {},
   logoutAuth: () => {},
+  updateUserAuth: () => {},
   setUser: () => {},
   setAccessToken: () => {},
 });
@@ -88,6 +90,11 @@ export function AuthContextProvider({ children }) {
     applyAuth({ user: null, accessToken: null });
   }, [applyAuth]);
 
+  const updateUserAuth = useCallback((nextUser) => {
+    setUser(nextUser);
+    updateStoredUser(nextUser);
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -97,6 +104,7 @@ export function AuthContextProvider({ children }) {
         isAuthenticated: !!accessToken,
         loginAuth,
         logoutAuth,
+        updateUserAuth,
         setUser,
         setAccessToken,
       }}

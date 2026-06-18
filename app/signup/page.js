@@ -37,6 +37,18 @@ const ENGLISH_LETTER_PATTERN = /[A-Za-z]/;
 const NUMBER_PATTERN = /\d/;
 const SPECIAL_CHARACTER_PATTERN = /[!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~]/;
 
+const getEmailValidationMessage = (email) => {
+  if (email.trim().length === 0) {
+    return "이메일을 입력해주세요.";
+  }
+
+  if (email.length > EMAIL_MAX_LENGTH) {
+    return "이메일은 255자 이하로 입력해주세요.";
+  }
+
+  return "";
+};
+
 const getNicknameValidationMessage = (nickname) => {
   const trimmedNickname = nickname.trim();
 
@@ -88,30 +100,34 @@ export default function SignupPage() {
   const [showPw, setShowPw] = useState(false);
   const [agree, setAgree] = useState({});
   const [errorMessage, setErrorMessage] = useState("");
+  const [isValidatingAccount, setIsValidatingAccount] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isAccountCreated, setIsAccountCreated] = useState(false);
 
   const set = (k, v) => setForm((f) => ({ ...f, [k]: v }));
   const setFamilyValue = (key, value) =>
     setFamily((f) => ({ ...f, [key]: value }));
   const allChecked = TERMS.every((t) => agree[t.key]);
   const requiredOk = TERMS.filter((t) => t.required).every((t) => agree[t.key]);
+  const emailMessage = getEmailValidationMessage(form.email);
   const nicknameMessage = getNicknameValidationMessage(form.name);
   const passwordMessage = getPasswordValidationMessage(form.pw);
   const showNicknameMessage = form.name.length > 0 && !!nicknameMessage;
   const showPasswordMessage = form.pw.length > 0 && !!passwordMessage;
   const pwMismatch = form.pw2.length > 0 && form.pw !== form.pw2;
   const accountStepErrorMessage =
+    emailMessage ||
     nicknameMessage ||
     passwordMessage ||
     (form.pw2.length === 0 ? "비밀번호 확인을 입력해주세요." : "") ||
     (pwMismatch ? "비밀번호가 일치하지 않아요." : "") ||
     (!requiredOk ? "필수 약관에 동의해주세요." : "");
-  const accountStepInvalid =
-    form.email.trim().length === 0 ||
-    form.email.length > EMAIL_MAX_LENGTH ||
-    !!accountStepErrorMessage ||
-    pwMismatch ||
-    !requiredOk;
+  const accountStepInvalid = !!accountStepErrorMessage;
+  const signupPayload = {
+    email: form.email.trim(),
+    password: form.pw,
+    nickname: form.name.trim(),
+  };
   const summaryFamily = normalizeFamilyProfile({
     ...family,
     name: form.name || DEFAULT_FAMILY.name,
@@ -144,8 +160,27 @@ export default function SignupPage() {
         setErrorMessage(accountStepErrorMessage);
         return;
       }
+
+      if (isValidatingAccount) {
+        return;
+      }
+
       setErrorMessage("");
-      setStep(2);
+      setIsValidatingAccount(true);
+
+      try {
+        await authApi.validateSignup(signupPayload);
+        setStep(2);
+      } catch (error) {
+        setErrorMessage(
+          getApiErrorMessage(
+            error,
+            "회원가입 정보를 확인하지 못했어요. 입력한 정보를 다시 확인해주세요."
+          )
+        );
+      } finally {
+        setIsValidatingAccount(false);
+      }
       return;
     }
 
@@ -154,38 +189,26 @@ export default function SignupPage() {
     setErrorMessage("");
     setIsSubmitting(true);
 
+    let accountCreated = isAccountCreated;
+
     try {
-      await authApi.signup({
-        email: form.email.trim(),
-        password: form.pw,
-        nickname: form.name.trim(),
-      });
+      if (!accountCreated) {
+        const { accessToken, user } = await authApi.signup(signupPayload);
 
-      const { accessToken, user } = await authApi.login({
-        email: form.email.trim(),
-        password: form.pw,
-      });
-
-      authContext.loginAuth(user, accessToken, true);
-
-      try {
-        await familyProfileApi.updateMe(createFamilyProfilePayload(summaryFamily));
-      } catch (error) {
-        setErrorMessage(
-          getApiErrorMessage(
-            error,
-            "회원가입은 완료됐지만 가족 상황 저장에 실패했어요. 마이페이지에서 다시 저장해주세요."
-          )
-        );
-        return;
+        authContext.loginAuth(user, accessToken, true);
+        accountCreated = true;
+        setIsAccountCreated(true);
       }
 
+      await familyProfileApi.updateMe(createFamilyProfilePayload(summaryFamily));
       router.push("/mypage");
     } catch (error) {
       setErrorMessage(
         getApiErrorMessage(
           error,
-          "회원가입에 실패했어요. 입력한 정보를 다시 확인해주세요."
+          accountCreated
+            ? "회원가입은 완료됐지만 가족 상황 저장에 실패했어요. 다시 시도해주세요."
+            : "회원가입에 실패했어요. 입력한 정보를 다시 확인해주세요."
         )
       );
     } finally {
@@ -382,12 +405,16 @@ export default function SignupPage() {
                 <Icon name="ArrowLeft" size={18} /> 이전
               </button>
             )}
-            <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={(step === 1 && accountStepInvalid) || isSubmitting}>
+            <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={(step === 1 && accountStepInvalid) || isValidatingAccount || isSubmitting}>
               {step === 1
-                ? "가족 상황 입력하기"
+                ? isValidatingAccount
+                  ? "계정 확인 중..."
+                  : "가족 상황 입력하기"
                 : isSubmitting
                   ? "가입 처리 중..."
-                  : "가입하고 시작하기"} <Icon name="ArrowRight" size={18} />
+                  : isAccountCreated
+                    ? "가족 상황 저장하기"
+                    : "가입하고 시작하기"} <Icon name="ArrowRight" size={18} />
             </button>
           </div>
         </form>

@@ -29,14 +29,11 @@ const getUserSummary = (data) => {
   return null;
 };
 
-const signup = (payload) => axios.post(`${AUTH_BASE_PATH}/signup`, payload);
-
-const login = async (payload) => {
-  const data = await axios.post(`${AUTH_BASE_PATH}/login`, payload);
+const createAuthResult = (data) => {
   const accessToken = getAccessToken(data);
 
   if (!accessToken) {
-    const error = new Error("로그인 응답에서 access token을 확인하지 못했어요.");
+    const error = new Error("인증 응답에서 access token을 확인하지 못했어요.");
     error.code = "AUTH_TOKEN_MISSING";
     throw error;
   }
@@ -48,10 +45,33 @@ const login = async (payload) => {
   };
 };
 
+const signup = async (payload) => {
+  const data = await axios.post(`${AUTH_BASE_PATH}/signup`, payload);
+  return createAuthResult(data);
+};
+
+const validateSignup = async (payload) => {
+  const data = await axios.post(`${AUTH_BASE_PATH}/signup/validate`, payload);
+
+  if (data?.valid === false) {
+    const error = new Error("회원가입 정보를 다시 확인해주세요.");
+    error.code = "SIGNUP_VALIDATION_FAILED";
+    throw error;
+  }
+
+  return data;
+};
+
+const login = async (payload) => {
+  const data = await axios.post(`${AUTH_BASE_PATH}/login`, payload);
+  return createAuthResult(data);
+};
+
 const getMe = () => axios.get("/api/v1/users/me");
 
 const authApi = {
   signup,
+  validateSignup,
   login,
   getMe,
 };
