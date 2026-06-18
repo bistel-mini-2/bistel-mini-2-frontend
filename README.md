@@ -42,7 +42,7 @@ npm run lint
 dodam/
 ├─ package.json # next 16 / react 19 / bootstrap 5.3 / lucide-react / axios
 ├─ next.config.mjs
-├─ jsconfig.json # 경로 alias @/_ → ./_
+├─ jsconfig.json # 경로 alias @/* → ./*
 └─ app/
 ├─ layout.js # 루트 레이아웃 (bootstrap + globals.css + Noto Sans KR)
 ├─ globals.css # ★ 도담 디자인 시스템 (코랄/핑크 토큰 + 컴포넌트 클래스 · dd-del-btn · dd-heart-btn · dd-cmp-chip)
@@ -78,11 +78,13 @@ dodam/
 │ ├─ EligibilityResult.js ★ 지원 가능성 — 모달+페이지 공용 내용
 │ ├─ PolicyCompare.js ★ 정책 비교 — 모달+페이지 공용 내용
 │ └─ ApplyPrep.js ★ 신청 준비 — 모달+페이지 공용 내용
-└─ data/ # 더미 데이터 (실제 API/axios 자리표시)
-├─ constants.js NAV_ITEMS · ACTION_META · 면책 문구
-├─ policies.js 정책 6종 + 상세/지원가능성/추천/체크리스트 헬퍼
-├─ family.js 가족 입력 옵션·기본값·요약 헬퍼
-└─ useLiked.js ★ 관심 정책 ID 목록 관리 훅 (has · toggle · remove · clear)
+├─ data/ # 더미 데이터 (실제 API/axios 자리표시)
+│ ├─ constants.js NAV_ITEMS · ACTION_META · 면책 문구
+│ ├─ policies.js 정책 6종 + 상세/지원가능성/추천/체크리스트 헬퍼
+│ ├─ family.js 가족 입력 옵션·기본값·요약 헬퍼
+│ └─ useLiked.js ★ 관심 정책 ID 목록 관리 훅 (has · toggle · remove · clear)
+└─ types/
+  └─ aiStatus.js AI RequestStatus/UserStatus UI 매핑 헬퍼
 
 ## 주요 화면
 
@@ -197,6 +199,9 @@ fix: API baseURL 설정 오류 수정
 - [프로젝트 참여 및 실행 가이드](docs/ONBOARDING.md)
 - [GitHub 협업 규칙](docs/CONVENTION.md)
 - [프론트엔드 코드 작성 규칙](docs/CODE_CONVENTION.md)
+- [AI/API 계약 문서](docs/API_SPEC_AI.md)
+- [AI 상태 UI 매핑 기준](docs/AI_STATUS_UI_MAPPING.md)
+- [정책 식별자 및 추천 입력 필드 매핑](docs/FIELD_MAPPING.md)
 
 ## 주의사항
 

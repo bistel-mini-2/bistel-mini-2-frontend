@@ -311,6 +311,29 @@ type PolicyAiSummaryResponse = {
     meta:
       source: "cache | generated"
   notes: "status는 RequestStatus이며 API 값으로 loading/done/error를 내려주지 않는다. 프론트는 getRequestStatusUi(status)를 사용한다. 캐시가 있으면 COMPLETED와 summary를 즉시 반환하고, 생성 비용이 크면 PROCESSING과 request_id를 반환한다. 정책 AI 요약은 사용자 추천 판단이 아니므로 user_status를 사용하지 않는다."
+
+- id: policy_related_list
+  name: "관련 정책 조회"
+  method: GET
+  path: "/api/v1/policies/{policy_id}/related"
+  auth: "optional"
+  priority: "low"
+  owner: "탐색/상세"
+  path_params:
+    - policy_id
+  query_params:
+    - limit
+  response_schema:
+    data:
+      items:
+        - policy_id: "string"
+          slug: "string"
+          name: "string"
+          summary: "string"
+          tag: "string"
+          tagTone: "string"
+          relation_reason: "string"
+  notes: "기능명세서의 관련 정책 기능. 정책 상세 응답의 related에 포함해도 되지만 독립 조회 API가 있으면 캐시/지연 로딩에 유리하다."
 ```
 
 ### 4.3 Favorites
@@ -798,7 +821,67 @@ type PolicyAiSummaryResponse = {
   owner: "추천/회원"
   request: "user_id, raw_query?, selected_conditions?, chat_session_id?"
   response: "request_id, status, parsed_query_json, merged_condition_json, questions, recommendations"
-  notes: "외부 추천 요청 생성/조회 API 뒤에서 호출되는 유스케이스 계층"
+  notes: "외부 추천 요청 생성/조회 API 뒤에서 호출되는 유스케이스 계층. ConditionAnalysis -> profile merge -> CandidateSearch -> assessment/RAG -> result formatting 순서로 호출한다."
+
+- id: condition_analysis_service_analyze
+  type: "service contract"
+  name: "ConditionAnalysisService.analyze"
+  category: "추천"
+  owner: "추천/회원"
+  request: "raw_query?, selected_conditions?"
+  response_schema:
+    parsed_query_json:
+      region_code: "string?"
+      income_bracket: "string?"
+      life_stage: "string?"
+      child_age_range: "string?"
+      dual_income: "boolean?"
+      household_type: "string?"
+      special_flags: "string[]"
+    input_issues:
+      - field_name: "string"
+        issue_type: "missing | ambiguous | invalid"
+        message: "string"
+        priority: "number"
+    follow_up_candidates:
+      - field_name: "string"
+        question_text: "string"
+        reason: "string"
+  notes: "기능명세서의 AI 조건 분석. 자연어/필드 입력을 공통 조건 JSON으로 정규화하고, 내부 이상 상태는 그대로 사용자에게 노출하지 않는다."
+
+- id: profile_condition_merge_service_merge
+  type: "service contract"
+  name: "ProfileConditionMergeService.merge"
+  category: "추천"
+  owner: "추천/회원"
+  request: "user_id, parsed_query_json, saved_profile_json?"
+  response_schema:
+    merged_condition_json: "SelectedConditions normalized for rule engine"
+    profile_conflict_json:
+      - field_name: "string"
+        saved_value: "unknown"
+        current_value: "unknown"
+        selected_value: "unknown"
+        rule: "current_input_wins"
+    missing_core_fields: "string[]"
+  notes: "저장 프로필과 현재 입력을 병합한다. 충돌 시 현재 입력 우선 원칙을 적용하고, 후보 검색은 merged_condition_json 기준으로만 수행한다."
+
+- id: recommendation_candidate_service_search
+  type: "service contract"
+  name: "RecommendationCandidateService.search"
+  category: "추천"
+  owner: "추천/회원"
+  request: "merged_condition_json, policy_rules, policy_basic_info"
+  response_schema:
+    candidates:
+      - policy_id: "string"
+        slug: "string"
+        survived_reasons: "string[]"
+        filter_match_json: "object"
+    excluded:
+      - policy_id: "string"
+        reason: "string"
+  notes: "기능명세서의 정책 후보 검색. LLM이 모든 정책을 직접 읽지 않고, Rule Filter Node가 명확히 아닌 정책을 제외한다. 결과는 recommendation_candidate에 저장한다."
 
 - id: eligibility_service_analyze
   type: "service contract"
@@ -867,6 +950,23 @@ type PolicyAiSummaryResponse = {
     evidences: "array"
     rendered_text: "string?"
   notes: "정책 AI요약과 RAG 답변을 통합한 공통 엔진. 상세 화면은 card mode, 챗봇은 chat mode로 렌더링한다."
+
+- id: rag_policy_chunk_search
+  type: "tool contract"
+  name: "search_policy_chunks"
+  category: "공통"
+  owner: "판단/비교"
+  request: "query, policy_ids?, top_k?, evidence_role?"
+  response_schema:
+    chunks:
+      - policy_id: "string"
+        chunk_id: "string"
+        snippet: "string"
+        source_title: "string"
+        source_url: "string"
+        score: "number"
+        evidence_role: "string"
+  notes: "정책 chunk 의미 검색 + 근거 반환. 추천, 지원가능성분석, 비교, 챗봇 답변, AI 요약에서 공통으로 사용하는 근거 검색 모듈."
 ```
 
 ## 6. Internal UI/Response Contracts

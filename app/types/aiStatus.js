@@ -175,5 +175,9 @@ export function getUserStatusUi(status) {
  * @returns {string}
  */
 export function getAiStatusPillClass(variant) {
-  return AI_STATUS_VARIANT_PILL_CLASS[variant] || AI_STATUS_VARIANT_PILL_CLASS.warning;
+  const className = AI_STATUS_VARIANT_PILL_CLASS[variant];
+  if (!className) {
+    console.warn(`[aiStatus] Unknown variant: ${variant}`);
+  }
+  return className || AI_STATUS_VARIANT_PILL_CLASS.idle;
 }
