@@ -7,17 +7,20 @@
 // 탭: 가족 프로필 / 관심 정책 / 신청 체크리스트 / 추천 이력 / 비교 이력 / 상담 이력
 // 저장 리스트(관심·추천·비교·상담)는 개별 삭제 + 전체 삭제를 지원한다.
 // =========================================================================
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useContext, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import { AuthContext } from "@/contexts/AuthContext";
+import familyProfileApi from "@/apis/familyProfileApi";
 import { getPolicy, getPolicies } from "@/app/data/policies";
 import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
-  FAMILY_PROFILE_KEY,
+  createFamilyProfilePayload,
   familyRows,
   normalizeFamilyProfile,
 } from "@/app/data/family";
@@ -94,11 +97,15 @@ function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxW
 }
 
 export default function MyPage() {
+  const router = useRouter();
+  const { isAuthenticated, isLoading } = useContext(AuthContext);
   const [tab, setTab] = useState("profile");
   const [familyProfile, setFamilyProfile] = useState(DEFAULT_FAMILY);
   const [familyDraft, setFamilyDraft] = useState(DEFAULT_FAMILY);
   const [isEditingFamily, setIsEditingFamily] = useState(false);
   const [familySaved, setFamilySaved] = useState(false);
+  const [familyError, setFamilyError] = useState("");
+  const [isSavingFamily, setIsSavingFamily] = useState(false);
   const { ids: likedIds, remove: removeLiked, clear: clearLiked } = useLiked();
   const [recs, setRecs] = useState(INIT_REC);
   const [compares, setCompares] = useState(INIT_COMPARE);
@@ -107,25 +114,44 @@ export default function MyPage() {
   const liked = getPolicies(likedIds);
 
   useEffect(() => {
-    if (typeof window === "undefined") {
+    if (!isLoading && !isAuthenticated) {
+      router.replace("/login");
+    }
+  }, [isAuthenticated, isLoading, router]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isLoading || !isAuthenticated) {
       return;
     }
 
-    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
-    if (!storedFamily) {
-      return;
-    }
+    let ignore = false;
 
-    try {
-      const nextFamily = normalizeFamilyProfile(JSON.parse(storedFamily));
-      startTransition(() => {
-        setFamilyProfile(nextFamily);
-        setFamilyDraft(nextFamily);
-      });
-    } catch {
-      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
-    }
-  }, []);
+    const loadFamilyProfile = async () => {
+      try {
+        const nextFamily = await familyProfileApi.getMe();
+        if (ignore || !nextFamily) {
+          return;
+        }
+
+        const normalizedFamily = normalizeFamilyProfile(nextFamily);
+        startTransition(() => {
+          setFamilyProfile(normalizedFamily);
+          setFamilyDraft(normalizedFamily);
+          setFamilyError("");
+        });
+      } catch {
+        if (!ignore) {
+          setFamilyError("가족 프로필을 불러오지 못했어요.");
+        }
+      }
+    };
+
+    loadFamilyProfile();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, isLoading]);
 
   const setFamilyDraftValue = (key, value) => {
     setFamilyDraft((family) => ({ ...family, [key]: value }));
@@ -165,21 +191,48 @@ export default function MyPage() {
     setIsEditingFamily(false);
   };
 
-  const saveFamilyProfile = () => {
+  const saveFamilyProfile = async () => {
+    if (isSavingFamily) {
+      return;
+    }
+
     const nextFamily = normalizeFamilyProfile(familyDraft);
 
-    setFamilyProfile(nextFamily);
-    setFamilyDraft(nextFamily);
-    setIsEditingFamily(false);
-    setFamilySaved(true);
+    setIsSavingFamily(true);
+    setFamilySaved(false);
+    setFamilyError("");
 
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        FAMILY_PROFILE_KEY,
-        JSON.stringify(nextFamily)
+    try {
+      const savedFamily = await familyProfileApi.updateMe(
+        createFamilyProfilePayload(nextFamily)
       );
+      const normalizedFamily = normalizeFamilyProfile(savedFamily || nextFamily);
+
+      setFamilyProfile(normalizedFamily);
+      setFamilyDraft(normalizedFamily);
+      setIsEditingFamily(false);
+      setFamilySaved(true);
+    } catch {
+      setFamilyError("가족 상황을 저장하지 못했어요. 잠시 후 다시 시도해주세요.");
+    } finally {
+      setIsSavingFamily(false);
     }
   };
+
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="dd-page">
+        <Header />
+        <main className="dd-shell" style={{ paddingTop: 32, paddingBottom: 64 }}>
+          <div className="dd-card dd-card-lg" style={{ padding: 24, maxWidth: 520 }}>
+            <strong style={{ fontSize: 16 }}>
+              {isLoading ? "로그인 상태 확인 중..." : "로그인 페이지로 이동 중..."}
+            </strong>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="dd-page">
@@ -297,11 +350,11 @@ export default function MyPage() {
                   </div>
 
                   <div className="d-flex gap-2 justify-content-end flex-wrap">
-                    <button type="button" className="dd-btn dd-btn-ghost" onClick={cancelFamilyEdit}>
+                    <button type="button" className="dd-btn dd-btn-ghost" onClick={cancelFamilyEdit} disabled={isSavingFamily}>
                       취소
                     </button>
-                    <button type="button" className="dd-btn dd-btn-coral" onClick={saveFamilyProfile}>
-                      <Icon name="Check" size={16} /> 저장하기
+                    <button type="button" className="dd-btn dd-btn-coral" onClick={saveFamilyProfile} disabled={isSavingFamily}>
+                      <Icon name="Check" size={16} /> {isSavingFamily ? "저장 중..." : "저장하기"}
                     </button>
                   </div>
                 </div>
@@ -318,6 +371,11 @@ export default function MyPage() {
               {familySaved && (
                 <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-green)" }}>
                   <Icon name="Check" size={13} /> 가족 상황이 저장됐어요.
+                </p>
+              )}
+              {familyError && (
+                <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={13} /> {familyError}
                 </p>
               )}
               <div className="mt-3"><DisclaimerNote /></div>

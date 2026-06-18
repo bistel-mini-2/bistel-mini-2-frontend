@@ -87,7 +87,51 @@
 
 `createRecommendationPayload()`가 화면 상태에서 API 필드만 추출하고 enum을 검증합니다.
 
-## 3. 필드별 허용 값
+## 3. 가족 프로필 저장 API
+
+가족 상황은 계정 요약 API(`GET /api/v1/users/me`)에 섞지 않고 별도 도메인 API로 저장합니다.
+
+```text
+GET /api/v1/family-profiles/me
+PUT /api/v1/family-profiles/me
+```
+
+`PUT /api/v1/family-profiles/me` 요청은 프론트 가족 상황 모델과 같은 필드를 사용합니다.
+백엔드는 이 값을 내부 저장 모델(`region_code`, `income_bracket`, `family_members` 등)로 변환합니다.
+
+```json
+{
+  "stage": "newborn",
+  "childAge": "0",
+  "income": "mid1",
+  "region": "seoul",
+  "special": ["many"]
+}
+```
+
+응답은 공통 `ApiResponse` 래퍼의 `data.family_profile`에 저장된 가족 프로필을 반환합니다.
+
+```json
+{
+  "success": true,
+  "data": {
+    "family_profile": {
+      "stage": "newborn",
+      "childAge": "0",
+      "income": "mid1",
+      "region": "seoul",
+      "special": ["many"],
+      "updated_at": "2026-06-18T00:00:00Z"
+    }
+  },
+  "error": null,
+  "meta": {}
+}
+```
+
+`users/me`는 `user_id`, `email`, `nickname`, `role` 같은 계정 요약만 반환하고 가족 상황을 포함하지 않습니다.
+
+## 4. 필드별 허용 값
 
 ### stage
 
@@ -160,7 +204,7 @@ gyeongnam, jeju
 백엔드 문서에는 `veteran`이 있지만 실행 enum과 변환 맵에는 없습니다. 런타임 검증을
 우선하여 프론트에서는 허용하지 않으며, 백엔드가 실행 enum을 추가한 뒤 함께 반영합니다.
 
-## 4. 백엔드 대조 결과
+## 5. 백엔드 대조 결과
 
 | 항목 | 프론트 상태 | 백엔드 대조 결과 |
 | --- | --- | --- |
@@ -172,7 +216,7 @@ gyeongnam, jeju
 | 정책 slug | `WLF` + 숫자 8자리 | 백엔드 문서 규칙 및 원본 `serv_id` 사용 방식과 일치 |
 | 추천 API | payload 생성만 구현 | 백엔드 엔드포인트·Pydantic 요청 스키마 미구현 |
 
-## 5. 연동 체크리스트
+## 6. 연동 체크리스트
 
 - 정책 링크와 API 요청에 숫자 PK 대신 slug를 사용합니다.
 - 요청 전에 모든 값이 이 문서의 enum에 포함되는지 검증합니다.
@@ -180,5 +224,6 @@ gyeongnam, jeju
 - 사용자 지역에 `metro`, `etc`, `national`을 보내지 않습니다.
 - `dual`은 맞벌이가 아니라 저소득 의미로만 사용합니다.
 - API payload에 프론트 전용 `name`, `childrenAges`를 포함하지 않습니다.
+- 가족 상황 저장은 `/api/v1/family-profiles/me`를 사용하고, `users/me`에 가족 조건을 섞지 않습니다.
 - 백엔드가 `POST /recommendations`를 구현하면 실제 Pydantic 스키마로 계약 테스트를 추가합니다.
 - 백엔드 enum이 변경되면 이 문서와 `app/data/family.js`를 같은 PR에서 갱신합니다.

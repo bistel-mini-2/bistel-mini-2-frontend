@@ -2,7 +2,7 @@
 
 // =========================================================================
 // 도담 — 로그인 (/login)
-// 의도: 이메일·비밀번호 + 간편 로그인으로 진입. (자리표시 핸들러)
+// 의도: 이메일·비밀번호로 백엔드 인증 API에 로그인한다.
 // 구성: 브랜드 패널 + 로그인 카드(입력/옵션/소셜/회원가입 링크).
 // =========================================================================
 import { useState } from "react";
@@ -12,7 +12,10 @@ import { useRouter } from "next/navigation";
 import AuthShell from "@/app/components/AuthShell";
 import Icon from "@/app/components/Icon";
 import authApi from "@/apis/authApi";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 import { AuthContext } from "@/contexts/AuthContext";
+
+const EMAIL_MAX_LENGTH = 255;
 
 export default function LoginPage() {
   const router = useRouter();
@@ -32,15 +35,19 @@ export default function LoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await authApi.login({ email, password: pw });
-      const { access_token, user } = response.data;
+      const { accessToken, user } = await authApi.login({
+        email: email.trim(),
+        password: pw,
+      });
 
-      authContext.loginAuth(user, access_token, remember);
+      authContext.loginAuth(user, accessToken, remember);
       router.push("/mypage");
     } catch (error) {
       setErrorMessage(
-        error.response?.data?.message ||
+        getApiErrorMessage(
+          error,
           "로그인에 실패했어요. 이메일과 비밀번호를 확인해주세요."
+        )
       );
     } finally {
       setIsSubmitting(false);
@@ -68,6 +75,7 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
                 required
+                maxLength={EMAIL_MAX_LENGTH}
               />
             </div>
           </div>

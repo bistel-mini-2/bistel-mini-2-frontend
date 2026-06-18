@@ -2,20 +2,23 @@
 
 // =========================================================================
 // 도담 — 회원가입 (/signup)
-// 의도: 이름·이메일·비밀번호 + 약관 동의로 가입. (자리표시 핸들러)
+// 의도: 이름·이메일·비밀번호 + 약관 동의로 백엔드 인증 API에 가입한다.
 // 구성: 브랜드 패널 + 가입 카드(입력/비밀번호 확인/약관 동의/로그인 링크).
 // =========================================================================
-import { useState } from "react";
+import { useContext, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import AuthShell from "@/app/components/AuthShell";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
 import authApi from "@/apis/authApi";
+import familyProfileApi from "@/apis/familyProfileApi";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
+import { AuthContext } from "@/contexts/AuthContext";
 import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
-  FAMILY_PROFILE_KEY,
+  createFamilyProfilePayload,
   familyRows,
   normalizeFamilyProfile,
 } from "@/app/data/family";
@@ -25,8 +28,60 @@ const TERMS = [
   { key: "privacy", label: "[필수] 개인정보 수집·이용 동의", required: true },
 ];
 
+const EMAIL_MAX_LENGTH = 255;
+const NICKNAME_MIN_LENGTH = 2;
+const NICKNAME_MAX_LENGTH = 100;
+const PASSWORD_MIN_LENGTH = 8;
+const PASSWORD_MAX_LENGTH = 72;
+const ENGLISH_LETTER_PATTERN = /[A-Za-z]/;
+const NUMBER_PATTERN = /\d/;
+const SPECIAL_CHARACTER_PATTERN = /[!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~]/;
+
+const getNicknameValidationMessage = (nickname) => {
+  const trimmedNickname = nickname.trim();
+
+  if (trimmedNickname.length < NICKNAME_MIN_LENGTH) {
+    return "닉네임은 2자 이상 입력해주세요.";
+  }
+
+  if (trimmedNickname.length > NICKNAME_MAX_LENGTH) {
+    return "닉네임은 100자 이하로 입력해주세요.";
+  }
+
+  return "";
+};
+
+const getPasswordValidationMessage = (password) => {
+  if (password.length < PASSWORD_MIN_LENGTH) {
+    return "비밀번호는 8자 이상 입력해주세요.";
+  }
+
+  if (password.length > PASSWORD_MAX_LENGTH) {
+    return "비밀번호는 72자 이하로 입력해주세요.";
+  }
+
+  if (/\s/.test(password)) {
+    return "비밀번호에는 공백을 사용할 수 없어요.";
+  }
+
+  if (!ENGLISH_LETTER_PATTERN.test(password)) {
+    return "비밀번호에는 영문자를 1개 이상 포함해주세요.";
+  }
+
+  if (!NUMBER_PATTERN.test(password)) {
+    return "비밀번호에는 숫자를 1개 이상 포함해주세요.";
+  }
+
+  if (!SPECIAL_CHARACTER_PATTERN.test(password)) {
+    return "비밀번호에는 특수문자를 1개 이상 포함해주세요.";
+  }
+
+  return "";
+};
+
 export default function SignupPage() {
   const router = useRouter();
+  const authContext = useContext(AuthContext);
   const [step, setStep] = useState(1);
   const [form, setForm] = useState({ name: "", email: "", pw: "", pw2: "" });
   const [family, setFamily] = useState(DEFAULT_FAMILY);
@@ -40,7 +95,23 @@ export default function SignupPage() {
     setFamily((f) => ({ ...f, [key]: value }));
   const allChecked = TERMS.every((t) => agree[t.key]);
   const requiredOk = TERMS.filter((t) => t.required).every((t) => agree[t.key]);
+  const nicknameMessage = getNicknameValidationMessage(form.name);
+  const passwordMessage = getPasswordValidationMessage(form.pw);
+  const showNicknameMessage = form.name.length > 0 && !!nicknameMessage;
+  const showPasswordMessage = form.pw.length > 0 && !!passwordMessage;
   const pwMismatch = form.pw2.length > 0 && form.pw !== form.pw2;
+  const accountStepErrorMessage =
+    nicknameMessage ||
+    passwordMessage ||
+    (form.pw2.length === 0 ? "비밀번호 확인을 입력해주세요." : "") ||
+    (pwMismatch ? "비밀번호가 일치하지 않아요." : "") ||
+    (!requiredOk ? "필수 약관에 동의해주세요." : "");
+  const accountStepInvalid =
+    form.email.trim().length === 0 ||
+    form.email.length > EMAIL_MAX_LENGTH ||
+    !!accountStepErrorMessage ||
+    pwMismatch ||
+    !requiredOk;
   const summaryFamily = normalizeFamilyProfile({
     ...family,
     name: form.name || DEFAULT_FAMILY.name,
@@ -69,7 +140,10 @@ export default function SignupPage() {
   const submit = async (e) => {
     e.preventDefault();
     if (step === 1) {
-      if (pwMismatch || !requiredOk) return;
+      if (accountStepInvalid) {
+        setErrorMessage(accountStepErrorMessage);
+        return;
+      }
       setErrorMessage("");
       setStep(2);
       return;
@@ -82,23 +156,37 @@ export default function SignupPage() {
 
     try {
       await authApi.signup({
-        email: form.email,
+        email: form.email.trim(),
         password: form.pw,
-        nickname: form.name,
+        nickname: form.name.trim(),
       });
 
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem(
-          FAMILY_PROFILE_KEY,
-          JSON.stringify(summaryFamily)
+      const { accessToken, user } = await authApi.login({
+        email: form.email.trim(),
+        password: form.pw,
+      });
+
+      authContext.loginAuth(user, accessToken, true);
+
+      try {
+        await familyProfileApi.updateMe(createFamilyProfilePayload(summaryFamily));
+      } catch (error) {
+        setErrorMessage(
+          getApiErrorMessage(
+            error,
+            "회원가입은 완료됐지만 가족 상황 저장에 실패했어요. 마이페이지에서 다시 저장해주세요."
+          )
         );
+        return;
       }
 
-      router.push("/login");
+      router.push("/mypage");
     } catch (error) {
       setErrorMessage(
-        error.response?.data?.message ||
+        getApiErrorMessage(
+          error,
           "회원가입에 실패했어요. 입력한 정보를 다시 확인해주세요."
+        )
       );
     } finally {
       setIsSubmitting(false);
@@ -123,15 +211,20 @@ export default function SignupPage() {
                 <label className="dd-label">이름(닉네임)</label>
                 <div className="dd-field">
                   <span className="dd-field-icon"><Icon name="User" size={18} /></span>
-                  <input className="dd-input" placeholder="도담에서 불릴 이름" value={form.name} onChange={(e) => set("name", e.target.value)} required />
+                  <input className="dd-input" placeholder="도담에서 불릴 이름" value={form.name} onChange={(e) => set("name", e.target.value)} required minLength={NICKNAME_MIN_LENGTH} maxLength={NICKNAME_MAX_LENGTH} style={{ borderColor: showNicknameMessage ? "var(--dd-coral-200)" : undefined }} />
                 </div>
               </div>
+              {showNicknameMessage && (
+                <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={13} /> {nicknameMessage}
+                </p>
+              )}
 
               <div>
                 <label className="dd-label">이메일</label>
                 <div className="dd-field">
                   <span className="dd-field-icon"><Icon name="FileText" size={18} /></span>
-                  <input type="email" className="dd-input" placeholder="이메일 주소" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required />
+                  <input type="email" className="dd-input" placeholder="이메일 주소" value={form.email} onChange={(e) => set("email", e.target.value)} autoComplete="email" required maxLength={EMAIL_MAX_LENGTH} />
                 </div>
               </div>
 
@@ -140,7 +233,7 @@ export default function SignupPage() {
                   <label className="dd-label">비밀번호</label>
                   <div className="dd-field">
                     <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
-                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="8자 이상" value={form.pw} onChange={(e) => set("pw", e.target.value)} required style={{ paddingRight: 48 }} />
+                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="영문·숫자·특수문자 포함" value={form.pw} onChange={(e) => set("pw", e.target.value)} required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH} style={{ paddingRight: 48, borderColor: showPasswordMessage ? "var(--dd-coral-200)" : undefined }} />
                     <button type="button" className="dd-field-eye" onClick={() => setShowPw((v) => !v)} aria-label="비밀번호 표시">
                       <Icon name={showPw ? "CircleAlert" : "BadgeCheck"} size={17} />
                     </button>
@@ -150,11 +243,16 @@ export default function SignupPage() {
                   <label className="dd-label">비밀번호 확인</label>
                   <div className="dd-field">
                     <span className="dd-field-icon"><Icon name="ShieldCheck" size={18} /></span>
-                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="다시 입력" value={form.pw2} onChange={(e) => set("pw2", e.target.value)} required
+                    <input type={showPw ? "text" : "password"} className="dd-input" placeholder="다시 입력" value={form.pw2} onChange={(e) => set("pw2", e.target.value)} required minLength={PASSWORD_MIN_LENGTH} maxLength={PASSWORD_MAX_LENGTH}
                       style={{ borderColor: pwMismatch ? "var(--dd-coral-200)" : undefined }} />
                   </div>
                 </div>
               </div>
+              {showPasswordMessage && (
+                <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={13} /> {passwordMessage}
+                </p>
+              )}
               {pwMismatch && (
                 <p className="dd-disclaimer mb-0" style={{ color: "var(--dd-coral)" }}>
                   <Icon name="CircleAlert" size={13} /> 비밀번호가 일치하지 않아요.
@@ -284,7 +382,7 @@ export default function SignupPage() {
                 <Icon name="ArrowLeft" size={18} /> 이전
               </button>
             )}
-            <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={(step === 1 && (pwMismatch || !requiredOk)) || isSubmitting}>
+            <button type="submit" className="dd-btn dd-btn-coral dd-btn-block dd-btn-lg" disabled={(step === 1 && accountStepInvalid) || isSubmitting}>
               {step === 1
                 ? "가족 상황 입력하기"
                 : isSubmitting

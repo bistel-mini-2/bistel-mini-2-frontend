@@ -5,6 +5,8 @@
 
 export const FAMILY_PROFILE_KEY = "dodam_family_profile";
 
+const SUPPORTED_SPECIAL_VALUES = ["single", "multi", "disabled", "many", "dual"];
+
 export const FAMILY_OPTIONS = {
   stage: [
     { value: "pregnant", label: "임신 준비·임신 중" },
@@ -53,7 +55,6 @@ export const FAMILY_OPTIONS = {
     { value: "disabled", label: "장애인 가구" },
     { value: "many", label: "다자녀 가정(2명 이상)" },
     { value: "dual", label: "저소득 가구" },
-    { value: "veteran", label: "보훈대상자" } 
   ],
 };
 
@@ -88,7 +89,7 @@ export function normalizeFamilyProfile(family = {}) {
     // 기존 화면·로컬스토리지 호환용 파생값. API 계약은 단일 childAge를 사용한다.
     childrenAges: [childAge],
     special: Array.isArray(family.special)
-      ? family.special
+      ? family.special.filter((item) => SUPPORTED_SPECIAL_VALUES.includes(item))
       : DEFAULT_FAMILY.special,
   };
 }
@@ -121,6 +122,10 @@ export function createRecommendationPayload(family = DEFAULT_FAMILY) {
   }
 
   return payload;
+}
+
+export function createFamilyProfilePayload(family = DEFAULT_FAMILY) {
+  return createRecommendationPayload(family);
 }
 
 // value -> label 변환
