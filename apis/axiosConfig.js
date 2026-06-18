@@ -22,9 +22,10 @@ const createApiError = ({ message, code, details, status }) => {
 
 const createResponseError = (body, status) => {
   const error = isObject(body) ? body.error : null;
+  const responseMessage = isObject(body) ? body.message : null;
 
   return createApiError({
-    message: error?.message,
+    message: error?.message || responseMessage,
     code: error?.code,
     details: error?.details,
     status,

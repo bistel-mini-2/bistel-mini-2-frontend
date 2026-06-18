@@ -130,6 +130,15 @@ PUT /api/v1/family-profiles/me
 ```
 
 `users/me`는 `user_id`, `email`, `nickname`, `role` 같은 계정 요약만 반환하고 가족 상황을 포함하지 않습니다.
+닉네임 수정은 `PATCH /api/v1/users/me`에 `{ "nickname": "새 닉네임" }`을 보내며, 이메일 변경은 지원하지 않습니다.
+마이페이지 계정 정보에서 이메일은 보기 전용으로만 표시하고, `role`은 일반 사용자에게 노출하지 않습니다.
+비밀번호 변경은 `PUT /api/v1/users/me/password`에 `current_password`, `new_password`를 보내 처리합니다.
+`new_password`는 `current_password`와 달라야 합니다.
+
+회원가입 온보딩에서 `가족 상황 입력하기`를 누를 때는 `POST /api/v1/auth/signup/validate`로
+`email`, `password`, `nickname`을 보내 계정 생성 없이 입력값과 중복 여부를 먼저 확인합니다.
+실제 계정 생성, access token 저장, 가족 프로필 저장은 마지막 `가입하고 시작하기`에서
+`POST /api/v1/auth/signup` 성공 후 `PUT /api/v1/family-profiles/me` 순서로 처리합니다.
 
 ## 4. 필드별 허용 값
 

@@ -74,6 +74,28 @@ export const saveStoredAuth = ({ user, accessToken, remember = true }) => {
   notifyAuthChanged();
 };
 
+export const updateStoredUser = (user) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const targetStorage = [window.localStorage, window.sessionStorage].find(
+    (storage) => storage.getItem(AUTH_ACCESS_TOKEN_KEY)
+  );
+
+  if (!targetStorage) {
+    return;
+  }
+
+  if (user) {
+    targetStorage.setItem(AUTH_USER_KEY, JSON.stringify(user));
+  } else {
+    targetStorage.removeItem(AUTH_USER_KEY);
+  }
+
+  notifyAuthChanged();
+};
+
 export const clearStoredAuth = () => {
   if (typeof window === "undefined") {
     return;
