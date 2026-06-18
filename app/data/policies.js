@@ -307,7 +307,7 @@ export const RECOMMENDED = [
 const RECOMMEND_RULES = {
   "parent-allowance": { ages: ["0", "1"] },
   "first-meet": { ages: ["preborn", "0"] },
-  "care-service": { ages: ["0", "1", "2-5", "6-12"], special: ["dual", "many"] },
+  "care-service": { ages: ["0", "1", "2-5", "6-12"], special: ["many"] },
   "postnatal-care": { ages: ["preborn", "0"], incomeSensitive: true },
   "child-allowance": { ages: ["0", "1", "2-5", "6-12"] },
   "single-parent": { ages: ["0", "1", "2-5", "6-12", "13+"], special: ["single"] },

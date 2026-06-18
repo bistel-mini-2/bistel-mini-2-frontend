@@ -59,25 +59,12 @@ export default function SignupPage() {
         : [...f.special, value],
     }));
 
-  const toggleChildAge = (value) =>
-    setFamily((f) => {
-      const nextFamily = normalizeFamilyProfile(f);
-      const isSelected = nextFamily.childrenAges.includes(value);
-
-      if (isSelected && nextFamily.childrenAges.length === 1) {
-        return nextFamily;
-      }
-
-      const childrenAges = isSelected
-        ? nextFamily.childrenAges.filter((age) => age !== value)
-        : [...nextFamily.childrenAges, value];
-
-      return {
-        ...nextFamily,
-        childAge: childrenAges[0],
-        childrenAges,
-      };
-    });
+  const selectChildAge = (value) =>
+    setFamily((family) => ({
+      ...family,
+      childAge: value,
+      childrenAges: [value],
+    }));
 
   const submit = async (e) => {
     e.preventDefault();
@@ -209,15 +196,15 @@ export default function SignupPage() {
               </div>
 
               <div>
-                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(해당되는 항목 모두 선택)</span></label>
+                <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(하나 선택)</span></label>
                 <div className="d-flex flex-wrap gap-2">
                   {FAMILY_OPTIONS.childAge.map((o) => {
-                    const on = summaryFamily.childrenAges.includes(o.value);
+                    const on = summaryFamily.childAge === o.value;
                     return (
                       <button
                         key={o.value}
                         type="button"
-                        onClick={() => toggleChildAge(o.value)}
+                        onClick={() => selectChildAge(o.value)}
                         className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
                         style={{ padding: "9px 14px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
                       >
