@@ -56,6 +56,10 @@ axiosInstance.interceptors.response.use(
   (response) => {
     const body = response.data;
 
+    if (response.config.preserveResponse) {
+      return body;
+    }
+
     if (isObject(body) && Object.prototype.hasOwnProperty.call(body, "success")) {
       if (!body.success) {
         return Promise.reject(createResponseError(body, response.status));
@@ -67,6 +71,10 @@ axiosInstance.interceptors.response.use(
     return body;
   },
   (error) => {
+    if (axios.isCancel(error) || error.code === "ERR_CANCELED") {
+      return Promise.reject(error);
+    }
+
     return Promise.reject(normalizeAxiosError(error));
   }
 );

@@ -265,15 +265,38 @@ type PolicyAiSummaryResponse = {
   priority: "high"
   owner: "탐색/상세"
   query_params:
-    - query
-    - category
-    - tags
-    - region_code
-    - sort
-    - page
-    - size
-  response: "policy list, pagination"
-  notes: "정책 탐색 화면 기본 진입점. 기능명세서의 정책 검색, 정책 필터/정렬을 이 목록 API의 query params로 흡수한다."
+    query: "string?; 정책명·카테고리·상세 내용·태그 검색"
+    category: "string?; main_category 단일 필터"
+    tags: "string[]?; 반복 파라미터 또는 쉼표 구분, 여러 태그는 AND 조건"
+    region_code: "RegionCode?; national은 전국 정책"
+    sort: "updated_at | name | category | relevance; 기본값 updated_at"
+    page: "integer >= 1; 기본값 1"
+    size: "integer 1..100; 기본값 20"
+  response_schema:
+    data:
+      - policy_id: "string; 내부 bigint PK의 문자열 표현"
+        slug: "string; 외부 URL/API 식별자인 policy_code"
+        name: "string"
+        category: "string?"
+        sub_category: "string?"
+        tags: "string[]"
+        summary: "string?"
+        benefit_summary: "string?"
+        agency: "string?"
+        benefit_type: "string?"
+        application_status: "string?"
+        application_start_date: "date?"
+        application_end_date: "date?"
+        application_period_text: "string?"
+        region_scope: "string?"
+        region_code: "string?"
+        official_url: "string?"
+    meta:
+      page: "integer"
+      size: "integer"
+      total: "integer"
+      total_pages: "integer"
+  notes: "정책 탐색 화면 기본 진입점. 검색·카테고리·태그·지역 필터와 정렬을 이 목록 API에 통합한다. relevance는 query가 있을 때만 관련도순으로 동작한다."
 
 - id: policies_detail
   name: "정책 상세 조회"
