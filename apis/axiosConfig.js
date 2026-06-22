@@ -61,12 +61,16 @@ axiosInstance.interceptors.response.use(
         return Promise.reject(createResponseError(body, response.status));
       }
 
-      return body.data;
+      return response.config.preserveResponse ? body : body.data;
     }
 
     return body;
   },
   (error) => {
+    if (axios.isCancel(error) || error.code === "ERR_CANCELED") {
+      return Promise.reject(error);
+    }
+
     return Promise.reject(normalizeAxiosError(error));
   }
 );
