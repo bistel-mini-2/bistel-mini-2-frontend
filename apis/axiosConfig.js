@@ -56,16 +56,12 @@ axiosInstance.interceptors.response.use(
   (response) => {
     const body = response.data;
 
-    if (response.config.preserveResponse) {
-      return body;
-    }
-
     if (isObject(body) && Object.prototype.hasOwnProperty.call(body, "success")) {
       if (!body.success) {
         return Promise.reject(createResponseError(body, response.status));
       }
 
-      return body.data;
+      return response.config.preserveResponse ? body : body.data;
     }
 
     return body;

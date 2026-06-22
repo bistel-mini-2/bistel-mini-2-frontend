@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
+import { FAMILY_OPTIONS } from "@/app/data/family";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
 
@@ -53,6 +54,11 @@ const SORTS = [
   { value: "updated_at", label: "최근 갱신순" },
   { value: "name", label: "이름순" },
   { value: "category", label: "분야순" },
+];
+
+const STAGES = [
+  { value: "", label: "전체 대상" },
+  ...FAMILY_OPTIONS.stage,
 ];
 
 const CATEGORY_ICONS = {
@@ -121,6 +127,7 @@ export default function PoliciesPage() {
   const [category, setCategory] = useState("");
   const [tagInput, setTagInput] = useState("");
   const [regionCode, setRegionCode] = useState("");
+  const [stage, setStage] = useState("");
   const [sort, setSort] = useState("updated_at");
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
@@ -163,6 +170,7 @@ export default function PoliciesPage() {
           category,
           tags,
           regionCode,
+          stage,
           sort,
           page,
           size: PAGE_SIZE,
@@ -194,7 +202,16 @@ export default function PoliciesPage() {
 
     loadPolicies();
     return () => controller.abort();
-  }, [debouncedQuery, category, tags, regionCode, sort, page, retryKey]);
+  }, [
+    debouncedQuery,
+    category,
+    tags,
+    regionCode,
+    stage,
+    sort,
+    page,
+    retryKey,
+  ]);
 
   const policies = useMemo(() => items.map(toPolicyCard), [items]);
 
@@ -214,6 +231,7 @@ export default function PoliciesPage() {
     setCategory("");
     setTagInput("");
     setRegionCode("");
+    setStage("");
     setSort("updated_at");
     setPage(1);
   };
@@ -317,7 +335,7 @@ export default function PoliciesPage() {
         {showFilters && (
           <div className="dd-card mt-3" style={{ padding: 20 }}>
             <div className="row g-3">
-              <label className="col-12 col-md-6">
+              <label className="col-12 col-lg-4">
                 <span className="dd-label">태그</span>
                 <input
                   className="dd-input"
@@ -331,7 +349,7 @@ export default function PoliciesPage() {
                   여러 태그는 쉼표로 구분하며 모두 일치하는 정책을 찾습니다.
                 </span>
               </label>
-              <label className="col-12 col-md-6">
+              <label className="col-12 col-md-6 col-lg-4">
                 <span className="dd-label">지역</span>
                 <select
                   className="dd-select"
@@ -341,6 +359,22 @@ export default function PoliciesPage() {
                   }
                 >
                   {REGIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="col-12 col-md-6 col-lg-4">
+                <span className="dd-label">대상</span>
+                <select
+                  className="dd-select"
+                  value={stage}
+                  onChange={(event) =>
+                    updateFilter(setStage)(event.target.value)
+                  }
+                >
+                  {STAGES.map((option) => (
                     <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
