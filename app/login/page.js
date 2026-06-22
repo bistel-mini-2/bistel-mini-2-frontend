@@ -5,7 +5,7 @@
 // 의도: 이메일·비밀번호로 백엔드 인증 API에 로그인한다.
 // 구성: 브랜드 패널 + 로그인 카드(입력/옵션/소셜/회원가입 링크).
 // =========================================================================
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useContext } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -26,6 +26,17 @@ export default function LoginPage() {
   const [remember, setRemember] = useState(true);
   const [errorMessage, setErrorMessage] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [favoriteLoginRequired, setFavoriteLoginRequired] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setFavoriteLoginRequired(
+        new URLSearchParams(window.location.search).get("reason") ===
+          "favorite"
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -41,7 +52,12 @@ export default function LoginPage() {
       });
 
       authContext.loginAuth(user, accessToken, remember);
-      router.push("/mypage");
+      const nextPath = new URLSearchParams(window.location.search).get("next");
+      const safeNextPath =
+        nextPath?.startsWith("/") && !nextPath.startsWith("//")
+          ? nextPath
+          : "/mypage";
+      router.push(safeNextPath);
     } catch (error) {
       setErrorMessage(
         getApiErrorMessage(
@@ -61,6 +77,14 @@ export default function LoginPage() {
         <p className="mt-1 mb-0" style={{ fontSize: 14, color: "var(--dd-stone-500)" }}>
           도담 계정으로 맞춤 추천과 저장 기능을 이용하세요.
         </p>
+        {favoriteLoginRequired && (
+          <p
+            className="dd-disclaimer mt-3 mb-0"
+            style={{ color: "var(--dd-coral)" }}
+          >
+            <Icon name="Heart" size={13} /> 관심 정책을 저장하려면 로그인이 필요해요.
+          </p>
+        )}
 
         <form className="mt-4 d-flex flex-column gap-3" onSubmit={submit}>
           <div>

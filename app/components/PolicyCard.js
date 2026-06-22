@@ -13,6 +13,7 @@ export default function PolicyCard({
   href,
   liked,
   onToggleLike,
+  likeDisabled = false,
   children,
 }) {
   if (!policy) return null;
@@ -57,6 +58,7 @@ export default function PolicyCard({
             type="button"
             className={"dd-heart-btn" + (liked ? " is-liked" : "")}
             onClick={onToggleLike}
+            disabled={likeDisabled}
             aria-pressed={liked}
             aria-label={liked ? "관심 정책에서 빼기" : "관심 정책에 담기"}
             title={liked ? "관심 정책에서 빼기" : "관심 정책에 담기"}

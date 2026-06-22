@@ -18,7 +18,7 @@ import { getApiErrorMessage } from "@/apis/axiosConfig";
 import { AuthContext } from "@/contexts/AuthContext";
 import familyProfileApi from "@/apis/familyProfileApi";
 import userApi from "@/apis/userApi";
-import { getPolicy, getPolicies } from "@/app/data/policies";
+import { getPolicy } from "@/app/data/policies";
 import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
@@ -137,6 +137,25 @@ function DelBtn({ onClick, style }) {
   );
 }
 
+function toFavoritePolicyCard(item) {
+  const savedDate = item.saved_at
+    ? new Intl.DateTimeFormat("ko-KR").format(new Date(item.saved_at))
+    : "저장일 정보 없음";
+
+  return {
+    id: item.policy_slug,
+    name: item.policy_name,
+    icon: "Heart",
+    tag: item.category || "복지 정책",
+    tagTone: "coral",
+    summary: item.region
+      ? `지원 지역: ${item.region === "national" ? "전국" : item.region}`
+      : "관심 정책으로 저장한 정책이에요.",
+    amount: item.category || "분야 정보 없음",
+    period: `저장일 ${savedDate}`,
+  };
+}
+
 // 빈 상태
 function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxWidth = 560 }) {
   return (
@@ -177,12 +196,20 @@ export default function MyPage() {
   const [familySaved, setFamilySaved] = useState(false);
   const [familyError, setFamilyError] = useState("");
   const [isSavingFamily, setIsSavingFamily] = useState(false);
-  const { ids: likedIds, remove: removeLiked, clear: clearLiked } = useLiked();
+  const {
+    items: likedItems,
+    loading: likedLoading,
+    error: likedError,
+    pendingIds: pendingLikedIds,
+    remove: removeLiked,
+    clear: clearLiked,
+    refresh: refreshLiked,
+  } = useLiked();
   const [recs, setRecs] = useState(INIT_REC);
   const [compares, setCompares] = useState(INIT_COMPARE);
   const [chats, setChats] = useState(INIT_CHAT);
 
-  const liked = getPolicies(likedIds);
+  const liked = likedItems.map(toFavoritePolicyCard);
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
@@ -739,14 +766,51 @@ export default function MyPage() {
 
           {/* 관심 정책 */}
           {tab === "liked" && (
-            liked.length ? (
+            likedLoading ? (
+              <div className="dd-card-soft text-center" style={{ padding: 40 }}>
+                <span className="dd-subtle">관심 정책을 불러오는 중이에요.</span>
+              </div>
+            ) : likedError && liked.length === 0 ? (
+              <div className="dd-card-soft text-center" style={{ padding: 40 }}>
+                <p className="mb-3" style={{ color: "var(--dd-coral)" }}>
+                  <Icon name="CircleAlert" size={15} /> {likedError}
+                </p>
+                <button
+                  type="button"
+                  className="dd-btn dd-btn-ghost dd-btn-sm"
+                  onClick={() => refreshLiked()}
+                >
+                  다시 시도
+                </button>
+              </div>
+            ) : liked.length ? (
               <div>
                 <ListHeader text={`저장한 정책 ${liked.length}개`} onClear={clearLiked} label="전체 비우기" />
+                {likedError && (
+                  <p
+                    className="dd-disclaimer mb-3"
+                    style={{ color: "var(--dd-coral)" }}
+                  >
+                    <Icon name="CircleAlert" size={13} /> {likedError}
+                  </p>
+                )}
                 <div className="row g-4">
                   {liked.map((p) => (
                     <div className="col-12 col-sm-6 col-lg-4" key={p.id}>
                       <div className="position-relative h-100">
-                        <DelBtn onClick={() => removeLiked(p.id)} style={{ position: "absolute", top: 14, right: 14, zIndex: 2 }} />
+                        <DelBtn
+                          onClick={() => removeLiked(p.id)}
+                          style={{
+                            position: "absolute",
+                            top: 14,
+                            right: 14,
+                            zIndex: 2,
+                            opacity: pendingLikedIds.includes(p.id) ? 0.5 : 1,
+                            pointerEvents: pendingLikedIds.includes(p.id)
+                              ? "none"
+                              : "auto",
+                          }}
+                        />
                         <PolicyCard policy={p} showMeta>
                           <Link href={`/policies/${p.id}`} className="dd-btn dd-btn-ghost dd-btn-sm">
                             <Icon name="FileText" size={15} /> 상세보기
