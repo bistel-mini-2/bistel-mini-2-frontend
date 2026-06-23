@@ -6,10 +6,12 @@ const createRequest = ({
   policyId,
   userConditions,
   sourceRefId,
+  sourceType,
   rawQuery,
 }) =>
   axios.post(ELIGIBILITY_REQUESTS_PATH, {
     policy_id: policyId,
+    source_type: sourceType || "POLICY_DETAIL",
     user_conditions: userConditions,
     source_ref_id: sourceRefId || policyId,
     raw_query: rawQuery || null,
