@@ -27,7 +27,14 @@ function defaultHref(key, policyId) {
   }
 }
 
-export default function ActionButtons({ actions = [], onAction, policyId, size }) {
+export default function ActionButtons({
+  actions = [],
+  disabledActions = [],
+  loadingActions = [],
+  onAction,
+  policyId,
+  size,
+}) {
   const cls = (variant) =>
     "dd-btn dd-btn-" + variant + (size === "sm" ? " dd-btn-sm" : "");
 
@@ -39,7 +46,7 @@ export default function ActionButtons({ actions = [], onAction, policyId, size }
         const inner = (
           <>
             <Icon name={meta.icon} size={size === "sm" ? 15 : 17} />
-            {meta.label}
+            {loadingActions.includes(key) ? "요청 중" : meta.label}
           </>
         );
         return onAction ? (
@@ -47,6 +54,7 @@ export default function ActionButtons({ actions = [], onAction, policyId, size }
             key={key}
             type="button"
             className={cls(meta.variant)}
+            disabled={disabledActions.includes(key)}
             onClick={() => onAction(key)}
           >
             {inner}

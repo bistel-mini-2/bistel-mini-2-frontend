@@ -6,7 +6,7 @@
 // 딥링크·새로고침·공유가 가능하게 한다. (모달은 정책 상세에서 호출)
 // =========================================================================
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import EligibilityResult from "@/app/components/EligibilityResult";
@@ -14,7 +14,9 @@ import { getPolicy } from "@/app/data/policies";
 
 export default function EligibilityPage() {
   const { id } = useParams();
+  const searchParams = useSearchParams();
   const policy = getPolicy(id);
+  const requestId = searchParams.get("requestId");
 
   return (
     <div className="dd-page">
@@ -32,6 +34,11 @@ export default function EligibilityPage() {
             <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>입력하신 가족 상황을 기준으로 분석한 결과예요.</p>
           </div>
         </div>
+        {requestId && (
+          <p className="dd-disclaimer mb-3">
+            <Icon name="Clock3" size={13} /> 분석 요청 #{requestId}
+          </p>
+        )}
         <EligibilityResult policyId={id} />
       </main>
     </div>
