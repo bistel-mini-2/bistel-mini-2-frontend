@@ -15,8 +15,12 @@ const createRequest = ({
     raw_query: rawQuery || null,
   });
 
+const getResult = (requestId, config = {}) =>
+  axios.get(`${ELIGIBILITY_REQUESTS_PATH}/${requestId}`, config);
+
 const eligibilityApi = {
   createRequest,
+  getResult,
 };
 
 export default eligibilityApi;

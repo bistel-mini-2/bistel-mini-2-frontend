@@ -39,7 +39,7 @@ export default function EligibilityPage() {
             <Icon name="Clock3" size={13} /> 분석 요청 #{requestId}
           </p>
         )}
-        <EligibilityResult policyId={id} />
+        <EligibilityResult policyId={id} requestId={requestId} />
       </main>
     </div>
   );
