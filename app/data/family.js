@@ -4,6 +4,7 @@
 // =========================================================================
 
 export const FAMILY_PROFILE_KEY = "dodam_family_profile";
+export const RECOMMENDATION_INPUT_KEY = "dodam_recommendation_input";
 
 const SUPPORTED_SPECIAL_VALUES = ["single", "multi", "disabled", "many", "dual"];
 

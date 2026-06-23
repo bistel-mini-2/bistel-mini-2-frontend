@@ -9,6 +9,9 @@
 // =========================================================================
 import { startTransition, useEffect, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import eligibilityApi from "@/apis/eligibilityApi";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
@@ -18,17 +21,59 @@ import { getRecommended } from "@/app/data/policies";
 import {
   DEFAULT_FAMILY,
   FAMILY_PROFILE_KEY,
+  RECOMMENDATION_INPUT_KEY,
+  createRecommendationPayload,
   normalizeFamilyProfile,
 } from "@/app/data/family";
 
 export default function RecommendResultPage() {
+  const router = useRouter();
   const [family, setFamily] = useState(DEFAULT_FAMILY);
+  const [recommendationInput, setRecommendationInput] = useState(null);
   const [saved, setSaved] = useState(false);
+  const [pendingPolicyId, setPendingPolicyId] = useState("");
+  const [eligibilityError, setEligibilityError] = useState("");
+  const [requestId] = useState(() => {
+    if (typeof window === "undefined") {
+      return "";
+    }
+
+    return new URLSearchParams(window.location.search).get("requestId") || "";
+  });
   const recommended = getRecommended(family);
 
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
+    }
+
+    const storedRecommendationInput = window.localStorage.getItem(
+      RECOMMENDATION_INPUT_KEY
+    );
+
+    if (storedRecommendationInput) {
+      try {
+        const parsedInput = JSON.parse(storedRecommendationInput);
+        const isSameRecommendation =
+          !requestId || String(parsedInput.requestId) === String(requestId);
+
+        if (!isSameRecommendation) {
+          throw new Error("Stored recommendation input does not match requestId");
+        }
+
+        const nextFamily = normalizeFamilyProfile(parsedInput.family);
+
+        startTransition(() => {
+          setFamily(nextFamily);
+          setRecommendationInput({
+            ...parsedInput,
+            family: nextFamily,
+          });
+        });
+        return;
+      } catch {
+        window.localStorage.removeItem(RECOMMENDATION_INPUT_KEY);
+      }
     }
 
     const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
@@ -42,7 +87,54 @@ export default function RecommendResultPage() {
     } catch {
       window.localStorage.removeItem(FAMILY_PROFILE_KEY);
     }
-  }, []);
+  }, [requestId]);
+
+  const startEligibilityRequest = async (policy) => {
+    if (!policy || pendingPolicyId) {
+      return;
+    }
+
+    const policyIdentifier = policy.backendSlug || policy.id;
+    setPendingPolicyId(policy.id);
+    setEligibilityError("");
+
+    try {
+      const userConditions =
+        recommendationInput?.selectedConditions ||
+        createRecommendationPayload(family);
+      const response = await eligibilityApi.createRequest({
+        policyId: policyIdentifier,
+        userConditions,
+        sourceRefId: recommendationInput?.requestId || requestId || policyIdentifier,
+        rawQuery: recommendationInput?.rawQuery,
+      });
+      const eligibilityRequestId = response?.request_id || response?.requestId;
+
+      if (!eligibilityRequestId) {
+        throw new Error("분석 요청 번호를 받지 못했어요.");
+      }
+
+      router.push(
+        `/policies/${policy.id}/eligibility?requestId=${encodeURIComponent(
+          eligibilityRequestId
+        )}`
+      );
+    } catch (error) {
+      if (error?.status === 401) {
+        const params = new URLSearchParams({
+          next: `/recommend/result${requestId ? `?requestId=${requestId}` : ""}`,
+        });
+        router.push(`/login?${params.toString()}`);
+        return;
+      }
+
+      setEligibilityError(
+        getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
+      );
+    } finally {
+      setPendingPolicyId("");
+    }
+  };
 
   return (
     <div className="dd-page">
@@ -74,6 +166,16 @@ export default function RecommendResultPage() {
           </button>
         </div>
 
+        {eligibilityError && (
+          <p
+            className="dd-disclaimer mt-3 mb-0"
+            role="alert"
+            style={{ color: "var(--dd-coral)" }}
+          >
+            <Icon name="CircleAlert" size={13} /> {eligibilityError}
+          </p>
+        )}
+
         {/* 추천 카드 리스트 */}
         <div className="row g-4 mt-1">
           {recommended.map((p, i) => (
@@ -82,9 +184,19 @@ export default function RecommendResultPage() {
                 <Link href={`/policies/${p.id}`} className="dd-btn dd-btn-ghost dd-btn-sm">
                   <Icon name="FileText" size={15} /> 자세히 보기
                 </Link>
-                <Link href={`/policies/${p.id}/eligibility`} className="dd-btn dd-btn-blue dd-btn-sm">
-                  <Icon name="ShieldCheck" size={15} /> 지원 가능성 분석
-                </Link>
+                <button
+                  type="button"
+                  className="dd-btn dd-btn-blue dd-btn-sm"
+                  onClick={() => startEligibilityRequest(p)}
+                  disabled={Boolean(pendingPolicyId)}
+                  aria-busy={pendingPolicyId === p.id}
+                >
+                  <Icon
+                    name={pendingPolicyId === p.id ? "LoaderCircle" : "ShieldCheck"}
+                    size={15}
+                  />
+                  {pendingPolicyId === p.id ? "분석 요청 중..." : "지원 가능성 분석"}
+                </button>
               </PolicyCard>
             </div>
           ))}

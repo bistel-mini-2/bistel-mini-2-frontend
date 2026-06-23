@@ -17,6 +17,7 @@ import DisclaimerNote from "@/app/components/DisclaimerNote";
 import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
+  RECOMMENDATION_INPUT_KEY,
   createRecommendationPayload,
   familyRows,
   normalizeFamilyProfile,
@@ -64,6 +65,18 @@ export default function RecommendPage() {
         selected_conditions: selectedConditions,
       };
       const { requestId } = await createRecommendationRequest(recommendationPayload);
+
+      if (typeof window !== "undefined") {
+        window.localStorage.setItem(
+          RECOMMENDATION_INPUT_KEY,
+          JSON.stringify({
+            requestId,
+            family: normalizedFamily,
+            rawQuery: trimmedRawQuery,
+            selectedConditions,
+          })
+        );
+      }
 
       router.push(`/recommend/result?requestId=${encodeURIComponent(requestId)}`);
     } catch (error) {
