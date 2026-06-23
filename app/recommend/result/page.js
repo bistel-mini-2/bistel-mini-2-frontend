@@ -105,6 +105,7 @@ export default function RecommendResultPage() {
       const response = await eligibilityApi.createRequest({
         policyId: policyIdentifier,
         userConditions,
+        sourceType: "RECOMMENDATION_RESULT",
         sourceRefId: recommendationInput?.requestId || requestId || policyIdentifier,
         rawQuery: recommendationInput?.rawQuery,
       });
