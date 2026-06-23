@@ -448,36 +448,38 @@ type PolicyAiSummaryResponse = {
 - id: favorites_list
   name: "관심 정책 목록 조회"
   method: GET
-  path: "/api/v1/favorites"
+  path: "/api/v1/users/me/favorites"
   auth: "required"
   priority: "medium"
   owner: "추천/회원"
-  request: "none"
-  response: "favorite policy list"
+  query_params:
+    page: "integer >= 1; default 1"
+    size: "integer 1..100; default 20"
+  response: "items[{ policy_id, policy_slug, policy_name, category, region, saved_at }] and pagination meta"
   notes: "마이페이지 저장 정책 목록"
 
 - id: favorites_add
   name: "관심 정책 추가"
   method: POST
-  path: "/api/v1/favorites/{policy_id}"
+  path: "/api/v1/favorites/{policy_slug}"
   auth: "required"
   priority: "medium"
   owner: "추천/회원"
   path_params:
-    - policy_id
-  response: "favorite created"
+    - policy_slug
+  response: "favorite created; duplicate returns 409"
   notes: "정책 카드/상세에서 저장"
 
 - id: favorites_remove
   name: "관심 정책 제거"
   method: DELETE
-  path: "/api/v1/favorites/{policy_id}"
+  path: "/api/v1/favorites/{policy_slug}"
   auth: "required"
   priority: "medium"
   owner: "추천/회원"
   path_params:
-    - policy_id
-  response: "favorite removed"
+    - policy_slug
+  response: "favorite removed; missing favorite returns 404"
   notes: "저장 해제"
 ```
 

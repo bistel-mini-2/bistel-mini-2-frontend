@@ -19,6 +19,7 @@ import EligibilityResult from "@/app/components/EligibilityResult";
 import PolicyCompare from "@/app/components/PolicyCompare";
 import ApplyPrep from "@/app/components/ApplyPrep";
 import { getPolicy, getRelated } from "@/app/data/policies";
+import { useLiked } from "@/app/data/useLiked";
 
 const TABS = [
   { key: "target", label: "지원대상" },
@@ -39,8 +40,14 @@ export default function PolicyDetailPage() {
   const { id } = useParams();
   const policy = getPolicy(id);
   const [tab, setTab] = useState("target");
-  const [liked, setLiked] = useState(false);
   const [modal, setModal] = useState(null);
+  const {
+    has: isLiked,
+    toggle: toggleLike,
+    pendingIds,
+    error: favoriteError,
+  } = useLiked();
+  const liked = isLiked(id);
 
   if (!policy) {
     return (
@@ -106,7 +113,8 @@ export default function PolicyDetailPage() {
           <button
             type="button"
             className={"dd-btn dd-btn-sm " + (liked ? "dd-btn-coral" : "dd-btn-ghost")}
-            onClick={() => setLiked((v) => !v)}
+            onClick={() => toggleLike(id)}
+            disabled={pendingIds.includes(id)}
             style={{ flex: "none" }}
             aria-pressed={liked}
           >
@@ -114,6 +122,15 @@ export default function PolicyDetailPage() {
             {liked ? "관심" : "관심"}
           </button>
         </div>
+
+        {favoriteError && (
+          <p
+            className="dd-disclaimer mt-3 mb-0"
+            style={{ color: "var(--dd-coral)" }}
+          >
+            <Icon name="CircleAlert" size={13} /> {favoriteError}
+          </p>
+        )}
 
         <div className="row g-4 mt-1">
           {/* 좌측 본문 */}

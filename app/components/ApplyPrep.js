@@ -10,12 +10,19 @@ import { useState } from "react";
 import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { getPolicy, getChecklist } from "@/app/data/policies";
+import { useLiked } from "@/app/data/useLiked";
 
 export default function ApplyPrep({ policyId, onAction }) {
   const policy = getPolicy(policyId);
   const initial = policy ? getChecklist(policyId) : [];
   const [checked, setChecked] = useState({});
-  const [saved, setSaved] = useState(false);
+  const {
+    has: isLiked,
+    toggle: toggleLike,
+    pendingIds,
+    error: favoriteError,
+  } = useLiked();
+  const saved = isLiked(policyId);
 
   if (!policy) return <p className="dd-subtle">정책 정보를 찾을 수 없어요.</p>;
 
@@ -46,12 +53,23 @@ export default function ApplyPrep({ policyId, onAction }) {
         <button
           type="button"
           className={"dd-btn dd-btn-sm " + (saved ? "dd-btn-coral" : "dd-btn-ghost")}
-          onClick={() => setSaved((v) => !v)}
+          onClick={() => toggleLike(policyId)}
+          disabled={pendingIds.includes(policyId)}
+          aria-pressed={saved}
         >
-          <Icon name={saved ? "Heart" : "Heart"} size={15} fill={saved ? "currentColor" : "none"} />
+          <Icon name="Heart" size={15} fill={saved ? "currentColor" : "none"} />
           {saved ? "관심 저장됨" : "관심 저장"}
         </button>
       </div>
+
+      {favoriteError && (
+        <p
+          className="dd-disclaimer mb-0"
+          style={{ color: "var(--dd-coral)" }}
+        >
+          <Icon name="CircleAlert" size={13} /> {favoriteError}
+        </p>
+      )}
 
       {/* 신청 정보 */}
       <div className="dd-card" style={{ overflow: "hidden" }}>

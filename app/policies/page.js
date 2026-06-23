@@ -142,7 +142,12 @@ export default function PoliciesPage() {
   const [error, setError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
   const [basket, setBasket] = useState([]);
-  const { has: isLiked, toggle: toggleLike } = useLiked();
+  const {
+    has: isLiked,
+    toggle: toggleLike,
+    pendingIds: pendingLikeIds,
+    error: favoriteError,
+  } = useLiked();
 
   const tags = useMemo(
     () =>
@@ -405,6 +410,15 @@ export default function PoliciesPage() {
           )}
         </div>
 
+        {favoriteError && (
+          <p
+            className="dd-disclaimer mt-3 mb-0"
+            style={{ color: "var(--dd-coral)" }}
+          >
+            <Icon name="CircleAlert" size={13} /> {favoriteError}
+          </p>
+        )}
+
         {error && (
           <div
             className="dd-card-soft mt-4 text-center"
@@ -435,6 +449,7 @@ export default function PoliciesPage() {
                       showMeta
                       liked={isLiked(policy.id)}
                       onToggleLike={() => toggleLike(policy.id)}
+                      likeDisabled={pendingLikeIds.includes(policy.id)}
                     >
                       <Link
                         href={`/policies/${policy.id}`}
