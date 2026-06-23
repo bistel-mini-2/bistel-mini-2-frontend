@@ -18,6 +18,7 @@ export const CATEGORIES = [
 export const POLICIES = [
   {
     id: "parent-allowance",
+    backendSlug: "WLF00004657",
     name: "부모급여",
     icon: "Wallet",
     category: "cash",
@@ -64,6 +65,7 @@ export const POLICIES = [
   },
   {
     id: "first-meet",
+    backendSlug: "WLF00004656",
     name: "첫만남이용권",
     icon: "Gift",
     category: "voucher",
@@ -109,6 +111,7 @@ export const POLICIES = [
   },
   {
     id: "care-service",
+    backendSlug: "WLF00000024",
     name: "아이돌봄서비스",
     icon: "HandHeart",
     category: "care",
@@ -154,6 +157,7 @@ export const POLICIES = [
   },
   {
     id: "postnatal-care",
+    backendSlug: "WLF00001188",
     name: "산모·신생아 건강관리",
     icon: "Stethoscope",
     category: "health",
@@ -199,6 +203,7 @@ export const POLICIES = [
   },
   {
     id: "child-allowance",
+    backendSlug: "WLF00001171",
     name: "아동수당",
     icon: "Coins",
     category: "cash",
@@ -238,6 +243,7 @@ export const POLICIES = [
   },
   {
     id: "single-parent",
+    backendSlug: "WLF00005856",
     name: "한부모가족 아동양육비",
     icon: "Heart",
     category: "cash",

@@ -121,10 +121,11 @@ export default function PolicyDetailPage() {
 
     try {
       const userConditions = createRecommendationPayload(readFamilyProfile());
+      const policyIdentifier = policy.backendSlug || policy.id;
       const response = await eligibilityApi.createRequest({
-        policyId: policy.id,
+        policyId: policyIdentifier,
         userConditions,
-        sourceRefId: policy.id,
+        sourceRefId: policyIdentifier,
       });
       const requestId = response?.request_id || response?.requestId;
 
