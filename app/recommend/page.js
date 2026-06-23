@@ -4,10 +4,12 @@
 // 도담 — 정책추천 조건 입력 (/recommend)
 // 의도: 가족 상황을 쉬운 질문으로 받아 맞춤 추천의 입력값을 만든다.
 // 구성: 스텝 인디케이터(1단계 활성) · 좌측 입력 폼 · 우측 입력 요약 카드 ·
-//       하단 코랄 CTA "추천 정책 확인하기" → /recommend/result.
+//       하단 코랄 CTA "추천 정책 확인하기" → 추천 요청 생성 후 /recommend/result.
 // =========================================================================
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { createRecommendationRequest } from "@/apis/recommendationApi";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
@@ -15,7 +17,6 @@ import DisclaimerNote from "@/app/components/DisclaimerNote";
 import {
   DEFAULT_FAMILY,
   FAMILY_OPTIONS,
-  FAMILY_PROFILE_KEY,
   createRecommendationPayload,
   familyRows,
   normalizeFamilyProfile,
@@ -24,6 +25,9 @@ import {
 export default function RecommendPage() {
   const router = useRouter();
   const [family, setFamily] = useState(DEFAULT_FAMILY);
+  const [rawQuery, setRawQuery] = useState("");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState("");
   const normalizedFamily = normalizeFamilyProfile(family);
 
   const set = (key, value) => setFamily((f) => ({ ...f, [key]: value }));
@@ -43,20 +47,34 @@ export default function RecommendPage() {
 
   const summaryRows = familyRows(normalizedFamily);
 
-  const goResult = () => {
-    const recommendationPayload = createRecommendationPayload(normalizedFamily);
-
-    if (typeof window !== "undefined") {
-      window.localStorage.setItem(
-        FAMILY_PROFILE_KEY,
-        JSON.stringify({
-          ...normalizedFamily,
-          ...recommendationPayload,
-        })
-      );
+  const submitRecommendation = async () => {
+    if (isSubmitting) {
+      return;
     }
 
-    router.push("/recommend/result");
+    setIsSubmitting(true);
+    setSubmitError("");
+
+    try {
+      const selectedConditions = createRecommendationPayload(normalizedFamily);
+      const trimmedRawQuery = rawQuery.trim();
+      const recommendationPayload = {
+        source_type: "FORM",
+        ...(trimmedRawQuery ? { raw_query: trimmedRawQuery } : {}),
+        selected_conditions: selectedConditions,
+      };
+      const { requestId } = await createRecommendationRequest(recommendationPayload);
+
+      router.push(`/recommend/result?requestId=${encodeURIComponent(requestId)}`);
+    } catch (error) {
+      setSubmitError(
+        getApiErrorMessage(
+          error,
+          "추천 요청을 생성하지 못했어요. 잠시 후 다시 시도해주세요."
+        )
+      );
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -76,13 +94,34 @@ export default function RecommendPage() {
           {/* 입력 폼 */}
           <div className="col-12 col-lg-8">
             <div className="dd-card dd-card-lg" style={{ padding: 28 }}>
+              {/* 자연어 입력 */}
+              <div className="mb-4">
+                <label className="dd-label">상황 설명</label>
+                <textarea
+                  className="dd-input"
+                  value={rawQuery}
+                  onChange={(e) => setRawQuery(e.target.value)}
+                  placeholder="예: 서울에 살고 있고 8개월 아이를 키우고 있어요. 받을 수 있는 양육 지원을 알고 싶어요."
+                  rows={4}
+                  maxLength={500}
+                  disabled={isSubmitting}
+                  style={{ minHeight: 112, resize: "vertical", lineHeight: 1.5 }}
+                />
+              </div>
+
               {/* 가족 구성 */}
               <div className="mb-4">
                 <label className="dd-label">가족 구성</label>
                 <div className="dd-radio-grid" style={{ gridTemplateColumns: "1fr 1fr" }}>
                   {FAMILY_OPTIONS.stage.map((o) => (
                     <label key={o.value} className={"dd-choice" + (family.stage === o.value ? " is-checked" : "")}>
-                      <input type="radio" name="stage" checked={family.stage === o.value} onChange={() => set("stage", o.value)} />
+                      <input
+                        type="radio"
+                        name="stage"
+                        checked={family.stage === o.value}
+                        onChange={() => set("stage", o.value)}
+                        disabled={isSubmitting}
+                      />
                       {o.label}
                     </label>
                   ))}
@@ -93,7 +132,12 @@ export default function RecommendPage() {
                 {/* 가구 소득 */}
                 <div className="col-12 col-sm-6">
                   <label className="dd-label">가구 소득</label>
-                  <select className="dd-select" value={family.income} onChange={(e) => set("income", e.target.value)}>
+                  <select
+                    className="dd-select"
+                    value={family.income}
+                    onChange={(e) => set("income", e.target.value)}
+                    disabled={isSubmitting}
+                  >
                     {FAMILY_OPTIONS.income.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -102,7 +146,12 @@ export default function RecommendPage() {
                 {/* 거주 지역 */}
                 <div className="col-12 col-sm-6">
                   <label className="dd-label">거주 지역</label>
-                  <select className="dd-select" value={family.region} onChange={(e) => set("region", e.target.value)}>
+                  <select
+                    className="dd-select"
+                    value={family.region}
+                    onChange={(e) => set("region", e.target.value)}
+                    disabled={isSubmitting}
+                  >
                     {FAMILY_OPTIONS.region.map((o) => (
                       <option key={o.value} value={o.value}>{o.label}</option>
                     ))}
@@ -121,6 +170,7 @@ export default function RecommendPage() {
                         key={o.value}
                         type="button"
                         onClick={() => selectChildAge(o.value)}
+                        disabled={isSubmitting}
                         className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
                         style={{ padding: "9px 16px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
                       >
@@ -143,6 +193,7 @@ export default function RecommendPage() {
                         key={o.value}
                         type="button"
                         onClick={() => toggleSpecial(o.value)}
+                        disabled={isSubmitting}
                         className={"dd-pill " + (on ? "dd-pill-coral" : "dd-pill-stone")}
                         style={{ padding: "9px 16px", fontSize: 14, border: on ? "1px solid var(--dd-coral-200)" : "1px solid transparent" }}
                       >
@@ -174,12 +225,37 @@ export default function RecommendPage() {
                 ))}
               </div>
               <hr className="dd-divider my-3" />
-              <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm dd-btn-block" onClick={() => setFamily(DEFAULT_FAMILY)}>
+              <button
+                type="button"
+                className="dd-btn dd-btn-ghost dd-btn-sm dd-btn-block"
+                onClick={() => {
+                  setFamily(DEFAULT_FAMILY);
+                  setRawQuery("");
+                  setSubmitError("");
+                }}
+                disabled={isSubmitting}
+              >
                 <Icon name="Pencil" size={15} /> 처음부터 다시 입력
               </button>
-              <button type="button" className="dd-btn dd-btn-coral dd-btn-block mt-2" onClick={goResult}>
-                추천 정책 확인하기 <Icon name="ArrowRight" size={18} />
+              <button
+                type="button"
+                className="dd-btn dd-btn-coral dd-btn-block mt-2"
+                onClick={submitRecommendation}
+                disabled={isSubmitting}
+                aria-busy={isSubmitting}
+              >
+                {isSubmitting ? "추천 요청 중..." : "추천 정책 확인하기"}
+                {!isSubmitting && <Icon name="ArrowRight" size={18} />}
               </button>
+              {submitError && (
+                <p
+                  className="mt-2 mb-0 text-center"
+                  role="alert"
+                  style={{ color: "var(--dd-coral)", fontSize: 13, lineHeight: 1.5 }}
+                >
+                  {submitError}
+                </p>
+              )}
               <div className="mt-3 text-center">
                 <DisclaimerNote />
               </div>
