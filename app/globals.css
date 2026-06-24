@@ -582,6 +582,94 @@ body {
   border: 1px solid var(--dd-coral-200);
 }
 
+/* ---------- 지원 가능성 분석 진행 상태 ---------- */
+.dd-analysis-progress {
+  padding: 18px;
+  background: #fff;
+  border-color: var(--dd-coral-100);
+  overflow: hidden;
+}
+.dd-analysis-loader {
+  width: 42px;
+  height: 42px;
+  border-radius: 50%;
+  background: var(--dd-coral-50);
+  color: var(--dd-coral);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.dd-analysis-loader svg {
+  animation: dd-spin 0.9s linear infinite;
+}
+.dd-analysis-bar {
+  height: 7px;
+  border-radius: 999px;
+  background: var(--dd-stone-100);
+  overflow: hidden;
+}
+.dd-analysis-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--dd-coral-grad);
+  transition: width 0.25s ease;
+}
+.dd-analysis-steps {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.dd-analysis-step {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dd-stone-400);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.dd-analysis-step-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 1px solid var(--dd-stone-200);
+  background: #fff;
+  color: var(--dd-stone-400);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+}
+.dd-analysis-step.is-active {
+  color: var(--dd-coral);
+}
+.dd-analysis-step.is-active .dd-analysis-step-dot {
+  border-color: var(--dd-coral);
+  background: var(--dd-coral);
+  color: #fff;
+}
+.dd-analysis-step.is-done {
+  color: var(--dd-green);
+}
+.dd-analysis-step.is-done .dd-analysis-step-dot {
+  border-color: var(--dd-green-200);
+  background: var(--dd-green-50);
+  color: var(--dd-green);
+}
+@keyframes dd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (max-width: 576px) {
+  .dd-analysis-steps {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 /* ---------- 표 ---------- */
 .dd-table {
   width: 100%;

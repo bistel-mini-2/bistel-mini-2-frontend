@@ -8,14 +8,18 @@ const createRequest = ({
   sourceRefId,
   sourceType,
   rawQuery,
-}) =>
-  axios.post(ELIGIBILITY_REQUESTS_PATH, {
-    policy_id: policyId,
-    source_type: sourceType || "POLICY_DETAIL",
-    user_conditions: userConditions,
-    source_ref_id: sourceRefId || policyId,
-    raw_query: rawQuery || null,
-  });
+}, config = {}) =>
+  axios.post(
+    ELIGIBILITY_REQUESTS_PATH,
+    {
+      policy_id: policyId,
+      source_type: sourceType || "POLICY_DETAIL",
+      user_conditions: userConditions,
+      source_ref_id: sourceRefId || policyId,
+      raw_query: rawQuery || null,
+    },
+    config
+  );
 
 const getResult = (requestId, config = {}) =>
   axios.get(`${ELIGIBILITY_REQUESTS_PATH}/${requestId}`, config);
