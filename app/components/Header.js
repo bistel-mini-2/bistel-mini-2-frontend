@@ -12,16 +12,17 @@ import Icon from "@/app/components/Icon";
 import { NAV_ITEMS } from "@/app/data/constants";
 import { AuthContext } from "@/contexts/AuthContext";
 
-export default function Header() {
+export default function Header({ activeHref }) {
   const pathname = usePathname();
   const { user, isAuthenticated, isLoading, logoutAuth } =
     useContext(AuthContext);
   const [open, setOpen] = useState(false);
   const displayName = user?.nickname || user?.email || "내 계정";
+  const activePathname = activeHref || pathname;
 
   // 현재 경로가 해당 네비에 속하는지 (하위 경로 포함)
   const isActive = (href) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+    href === "/" ? activePathname === "/" : activePathname.startsWith(href);
 
   const handleLogout = () => {
     logoutAuth();

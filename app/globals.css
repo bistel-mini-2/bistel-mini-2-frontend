@@ -582,6 +582,59 @@ body {
   border: 1px solid var(--dd-coral-200);
 }
 
+/* ---------- 지원 가능성 분석 섹션 ---------- */
+.dd-section-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--dd-stone-100);
+}
+.dd-evidence-card,
+.dd-input-summary-card {
+  overflow: hidden;
+}
+.dd-evidence-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px;
+}
+.dd-evidence-item {
+  border: 1px solid var(--dd-stone-100);
+  border-radius: 14px;
+  background: var(--dd-stone-50);
+  padding: 14px;
+}
+.dd-input-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  padding: 14px;
+}
+.dd-input-summary-chip {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  border: 1px solid var(--dd-stone-100);
+  border-radius: 14px;
+  background: var(--dd-stone-50);
+  padding: 11px 13px;
+}
+.dd-input-summary-chip span {
+  color: var(--dd-stone-500);
+  font-size: 12px;
+  font-weight: 700;
+}
+.dd-input-summary-chip strong {
+  min-width: 0;
+  color: var(--dd-ink-80);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
 /* ---------- 지원 가능성 분석 진행 상태 ---------- */
 .dd-analysis-progress {
   padding: 18px;
