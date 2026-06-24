@@ -9,9 +9,6 @@
 // =========================================================================
 import { startTransition, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import eligibilityApi from "@/apis/eligibilityApi";
-import { getApiErrorMessage } from "@/apis/axiosConfig";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
@@ -22,17 +19,13 @@ import {
   DEFAULT_FAMILY,
   FAMILY_PROFILE_KEY,
   RECOMMENDATION_INPUT_KEY,
-  createRecommendationPayload,
   normalizeFamilyProfile,
 } from "@/app/data/family";
 
 export default function RecommendResultPage() {
-  const router = useRouter();
   const [family, setFamily] = useState(DEFAULT_FAMILY);
   const [recommendationInput, setRecommendationInput] = useState(null);
   const [saved, setSaved] = useState(false);
-  const [pendingPolicyId, setPendingPolicyId] = useState("");
-  const [eligibilityError, setEligibilityError] = useState("");
   const [requestId] = useState(() => {
     if (typeof window === "undefined") {
       return "";
@@ -89,52 +82,16 @@ export default function RecommendResultPage() {
     }
   }, [requestId]);
 
-  const startEligibilityRequest = async (policy) => {
-    if (!policy || pendingPolicyId) {
-      return;
+  const eligibilityHref = (policyId) => {
+    const params = new URLSearchParams({
+      policyId,
+      source: "recommendation",
+    });
+    const sourceRequestId = recommendationInput?.requestId || requestId;
+    if (sourceRequestId) {
+      params.set("recommendationRequestId", sourceRequestId);
     }
-
-    const policyIdentifier = policy.backendSlug || policy.id;
-    setPendingPolicyId(policy.id);
-    setEligibilityError("");
-
-    try {
-      const userConditions =
-        recommendationInput?.selectedConditions ||
-        createRecommendationPayload(family);
-      const response = await eligibilityApi.createRequest({
-        policyId: policyIdentifier,
-        userConditions,
-        sourceType: "RECOMMENDATION_RESULT",
-        sourceRefId: recommendationInput?.requestId || requestId || policyIdentifier,
-        rawQuery: recommendationInput?.rawQuery,
-      });
-      const eligibilityRequestId = response?.request_id || response?.requestId;
-
-      if (!eligibilityRequestId) {
-        throw new Error("분석 요청 번호를 받지 못했어요.");
-      }
-
-      router.push(
-        `/policies/${policy.id}/eligibility?requestId=${encodeURIComponent(
-          eligibilityRequestId
-        )}`
-      );
-    } catch (error) {
-      if (error?.status === 401) {
-        const params = new URLSearchParams({
-          next: `/recommend/result${requestId ? `?requestId=${requestId}` : ""}`,
-        });
-        router.push(`/login?${params.toString()}`);
-        return;
-      }
-
-      setEligibilityError(
-        getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
-      );
-    } finally {
-      setPendingPolicyId("");
-    }
+    return `/eligibility?${params.toString()}`;
   };
 
   return (
@@ -167,16 +124,6 @@ export default function RecommendResultPage() {
           </button>
         </div>
 
-        {eligibilityError && (
-          <p
-            className="dd-disclaimer mt-3 mb-0"
-            role="alert"
-            style={{ color: "var(--dd-coral)" }}
-          >
-            <Icon name="CircleAlert" size={13} /> {eligibilityError}
-          </p>
-        )}
-
         {/* 추천 카드 리스트 */}
         <div className="row g-4 mt-1">
           {recommended.map((p, i) => (
@@ -185,19 +132,12 @@ export default function RecommendResultPage() {
                 <Link href={`/policies/${p.id}`} className="dd-btn dd-btn-ghost dd-btn-sm">
                   <Icon name="FileText" size={15} /> 자세히 보기
                 </Link>
-                <button
-                  type="button"
+                <Link
+                  href={eligibilityHref(p.id)}
                   className="dd-btn dd-btn-blue dd-btn-sm"
-                  onClick={() => startEligibilityRequest(p)}
-                  disabled={Boolean(pendingPolicyId)}
-                  aria-busy={pendingPolicyId === p.id}
                 >
-                  <Icon
-                    name={pendingPolicyId === p.id ? "LoaderCircle" : "ShieldCheck"}
-                    size={15}
-                  />
-                  {pendingPolicyId === p.id ? "분석 요청 중..." : "지원 가능성 분석"}
-                </button>
+                  <Icon name="ShieldCheck" size={15} /> 지원 가능성 분석
+                </Link>
               </PolicyCard>
             </div>
           ))}

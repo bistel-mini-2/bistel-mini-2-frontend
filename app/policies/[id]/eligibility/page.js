@@ -17,6 +17,8 @@ export default function EligibilityPage() {
   const searchParams = useSearchParams();
   const policy = getPolicy(id);
   const requestId = searchParams.get("requestId");
+  const source = searchParams.get("source") || "policy-detail";
+  const recommendationRequestId = searchParams.get("recommendationRequestId");
 
   return (
     <div className="dd-page">
@@ -31,7 +33,7 @@ export default function EligibilityPage() {
           </span>
           <div>
             <h1 className="dd-title" style={{ fontSize: 26 }}>지원 가능성 분석</h1>
-            <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>입력하신 가족 상황을 기준으로 분석한 결과예요.</p>
+            <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>입력 조건과 정책 기준을 비교해 확인하고 있어요.</p>
           </div>
         </div>
         {requestId && (
@@ -39,7 +41,12 @@ export default function EligibilityPage() {
             <Icon name="Clock3" size={13} /> 분석 요청 #{requestId}
           </p>
         )}
-        <EligibilityResult policyId={id} requestId={requestId} />
+        <EligibilityResult
+          policyId={id}
+          requestId={requestId}
+          entrySource={source}
+          recommendationRequestId={recommendationRequestId}
+        />
       </main>
     </div>
   );

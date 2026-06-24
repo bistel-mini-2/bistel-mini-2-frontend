@@ -6,7 +6,14 @@
 // 결과 배너 + 분석 표(충족/추가확인 배지) + 입력 요약 + 다시 분석하기 +
 // 하단 액션(비교/신청준비) + 면책 문구.
 // =========================================================================
-import { startTransition, useEffect, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import eligibilityApi from "@/apis/eligibilityApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
@@ -17,9 +24,22 @@ import { getPolicy, ELIGIBILITY_LEVELS } from "@/app/data/policies";
 import {
   DEFAULT_FAMILY,
   FAMILY_PROFILE_KEY,
+  RECOMMENDATION_INPUT_KEY,
+  createRecommendationPayload,
   familyRows,
   normalizeFamilyProfile,
 } from "@/app/data/family";
+import { AuthContext } from "@/contexts/AuthContext";
+
+const ENTRY_SOURCE = {
+  POLICY_DETAIL: "policy-detail",
+  RECOMMENDATION: "recommendation",
+};
+
+const SOURCE_TYPE = {
+  POLICY_DETAIL: "POLICY_DETAIL",
+  RECOMMENDATION_RESULT: "RECOMMENDATION_RESULT",
+};
 
 const STATUS_META = {
   ok: { label: "충족", pill: "dd-pill-green", icon: "Check" },
@@ -122,17 +142,152 @@ const getQuestions = (result) => {
   return [];
 };
 
-export default function EligibilityResult({ policyId, requestId, family = DEFAULT_FAMILY, onAction }) {
+const dedupeCriteria = (criteria) => {
+  const seen = new Set();
+  return criteria.filter((item) => {
+    const key = `${item.label || ""}|${item.status || ""}|${item.note || ""}`;
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
+};
+
+const readStoredFamily = () => {
+  if (typeof window === "undefined") {
+    return DEFAULT_FAMILY;
+  }
+
+  const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
+  if (!storedFamily) {
+    return DEFAULT_FAMILY;
+  }
+
+  try {
+    return normalizeFamilyProfile(JSON.parse(storedFamily));
+  } catch {
+    window.localStorage.removeItem(FAMILY_PROFILE_KEY);
+    return DEFAULT_FAMILY;
+  }
+};
+
+const readRecommendationInput = (recommendationRequestId) => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored = window.localStorage.getItem(RECOMMENDATION_INPUT_KEY);
+  if (!stored) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(stored);
+    const isSameRequest =
+      !recommendationRequestId ||
+      String(parsed.requestId) === String(recommendationRequestId);
+
+    if (!isSameRequest) {
+      return null;
+    }
+
+    return {
+      ...parsed,
+      family: normalizeFamilyProfile(parsed.family),
+    };
+  } catch {
+    window.localStorage.removeItem(RECOMMENDATION_INPUT_KEY);
+    return null;
+  }
+};
+
+function AnalysisProgress({ authLoading, creatingRequest, loadingResult, isWaiting }) {
+  const steps = ["인증 확인", "요청 생성", "조건 비교", "결과 정리"];
+  const activeStep = authLoading
+    ? 0
+    : creatingRequest
+      ? 1
+      : loadingResult || isWaiting
+        ? 2
+        : 3;
+  const progress = `${((activeStep + 1) / steps.length) * 100}%`;
+  const title = authLoading
+    ? "로그인 상태 확인 중"
+    : creatingRequest
+      ? "분석 요청 생성 중"
+      : isWaiting
+        ? "정책 기준 비교 중"
+        : "분석 결과 조회 중";
+
+  return (
+    <div className="dd-card-soft dd-analysis-progress">
+      <div className="d-flex align-items-start gap-3">
+        <span className="dd-analysis-loader" aria-hidden="true">
+          <Icon name="LoaderCircle" size={20} />
+        </span>
+        <div className="flex-grow-1">
+          <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
+            <strong style={{ fontSize: 15 }}>{title}</strong>
+            <span className="dd-subtle" style={{ fontSize: 13 }}>
+              잠시만 기다려 주세요
+            </span>
+          </div>
+          <p className="mb-0 mt-1 dd-subtle" style={{ fontSize: 14 }}>
+            입력 조건을 정책 기준과 비교해서 지원 가능성을 정리하고 있어요.
+          </p>
+          <div className="dd-analysis-bar mt-3" aria-hidden="true">
+            <span style={{ width: progress }} />
+          </div>
+          <div className="dd-analysis-steps mt-3">
+            {steps.map((step, index) => {
+              const state =
+                index < activeStep ? "is-done" : index === activeStep ? "is-active" : "";
+              return (
+                <span key={step} className={`dd-analysis-step ${state}`}>
+                  <span className="dd-analysis-step-dot">
+                    {index < activeStep ? <Icon name="Check" size={11} /> : index + 1}
+                  </span>
+                  <span>{step}</span>
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function EligibilityResult({
+  policyId,
+  requestId,
+  entrySource = ENTRY_SOURCE.POLICY_DETAIL,
+  recommendationRequestId,
+  family = DEFAULT_FAMILY,
+  onAction,
+}) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryString = searchParams.toString();
+  const { isLoading: authLoading, isAuthenticated } = useContext(AuthContext);
   const policy = getPolicy(policyId);
+  const creationStartedRef = useRef(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [currentFamily, setCurrentFamily] = useState(family);
+  const [activeRequestId, setActiveRequestId] = useState(requestId || "");
   const [requestResult, setRequestResult] = useState(null);
   const [requestError, setRequestError] = useState("");
+  const [creatingRequest, setCreatingRequest] = useState(!requestId);
   const [loadingResult, setLoadingResult] = useState(Boolean(requestId));
   const [refreshKey, setRefreshKey] = useState(0);
+
+  const redirectToLogin = useCallback(() => {
+    const next = queryString ? `${pathname}?${queryString}` : pathname;
+    const params = new URLSearchParams({ next });
+    router.push(`/login?${params.toString()}`);
+  }, [pathname, queryString, router]);
 
   useEffect(() => {
     startTransition(() => setCurrentFamily(family));
@@ -143,21 +298,120 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
       return;
     }
 
-    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
-    if (!storedFamily) {
+    const recommendationInput =
+      entrySource === ENTRY_SOURCE.RECOMMENDATION
+        ? readRecommendationInput(recommendationRequestId)
+        : null;
+    const nextFamily = recommendationInput?.family || readStoredFamily();
+    startTransition(() => setCurrentFamily(nextFamily));
+  }, [entrySource, recommendationRequestId]);
+
+  useEffect(() => {
+    if (activeRequestId || creationStartedRef.current) {
+      return;
+    }
+    if (!policy) {
+      return;
+    }
+    if (authLoading) {
+      return;
+    }
+    if (!isAuthenticated) {
+      redirectToLogin();
       return;
     }
 
-    try {
-      const nextFamily = normalizeFamilyProfile(JSON.parse(storedFamily));
-      startTransition(() => setCurrentFamily(nextFamily));
-    } catch {
-      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
-    }
-  }, []);
+    creationStartedRef.current = true;
+    let canceled = false;
+
+    const createAnalysisRequest = async () => {
+      setCreatingRequest(true);
+      setRequestError("");
+
+      try {
+        const recommendationInput =
+          entrySource === ENTRY_SOURCE.RECOMMENDATION
+            ? readRecommendationInput(recommendationRequestId)
+            : null;
+        const userConditions =
+          recommendationInput?.selectedConditions ||
+          createRecommendationPayload(
+            recommendationInput?.family || readStoredFamily()
+          );
+        const policyIdentifier = policy.backendSlug || policy.id;
+        const response = await eligibilityApi.createRequest({
+          policyId: policyIdentifier,
+          userConditions,
+          sourceType:
+            entrySource === ENTRY_SOURCE.RECOMMENDATION
+              ? SOURCE_TYPE.RECOMMENDATION_RESULT
+              : SOURCE_TYPE.POLICY_DETAIL,
+          sourceRefId:
+            recommendationInput?.requestId ||
+            recommendationRequestId ||
+            policyIdentifier,
+          rawQuery: recommendationInput?.rawQuery,
+        });
+        const nextRequestId = response?.request_id || response?.requestId;
+
+        if (!nextRequestId) {
+          throw new Error("분석 요청 번호를 받지 못했어요.");
+        }
+
+        if (canceled) {
+          return;
+        }
+
+        setCreatingRequest(false);
+        setActiveRequestId(String(nextRequestId));
+        const nextParams = new URLSearchParams(searchParams.toString());
+        nextParams.set("requestId", String(nextRequestId));
+        router.replace(`${pathname}?${nextParams.toString()}`);
+      } catch (error) {
+        if (error?.status === 401) {
+          redirectToLogin();
+          return;
+        }
+
+        if (!canceled) {
+          setRequestError(
+            getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
+          );
+        }
+      } finally {
+        if (!canceled) {
+          setCreatingRequest(false);
+        }
+      }
+    };
+
+    createAnalysisRequest();
+
+    return () => {
+      canceled = true;
+    };
+  }, [
+    activeRequestId,
+    authLoading,
+    entrySource,
+    isAuthenticated,
+    pathname,
+    policy,
+    redirectToLogin,
+    recommendationRequestId,
+    router,
+    searchParams,
+  ]);
 
   useEffect(() => {
-    if (!requestId) {
+    if (!activeRequestId) {
+      return;
+    }
+    if (authLoading) {
+      return;
+    }
+    if (!isAuthenticated) {
+      redirectToLogin();
       return;
     }
 
@@ -170,7 +424,7 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
       setLoadingResult(true);
 
       try {
-        const nextResult = await eligibilityApi.getResult(requestId, {
+        const nextResult = await eligibilityApi.getResult(activeRequestId, {
           signal: controller.signal,
         });
 
@@ -189,10 +443,7 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
         }
 
         if (error?.status === 401) {
-          const currentQuery = searchParams.toString();
-          const next = currentQuery ? `${pathname}?${currentQuery}` : pathname;
-          const params = new URLSearchParams({ next });
-          router.push(`/login?${params.toString()}`);
+          redirectToLogin();
           return;
         }
 
@@ -216,10 +467,19 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
         window.clearTimeout(timeoutId);
       }
     };
-  }, [pathname, requestId, refreshKey, router, searchParams]);
+  }, [
+    activeRequestId,
+    authLoading,
+    isAuthenticated,
+    pathname,
+    queryString,
+    refreshKey,
+    redirectToLogin,
+    router,
+  ]);
 
   const reanalyze = () => {
-    if (requestId) {
+    if (activeRequestId) {
       setAnalyzing(true);
       setRefreshKey((key) => key + 1);
       return;
@@ -229,11 +489,11 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
     setTimeout(() => setAnalyzing(false), 700);
   };
 
-  if (!policy && !requestId && !requestResult) {
+  if (!policy && !activeRequestId && !requestResult) {
     return <p className="dd-subtle">정책 정보를 찾을 수 없어요.</p>;
   }
 
-  const isApiMode = Boolean(requestId);
+  const isApiMode = Boolean(activeRequestId);
   const requestStatus = requestResult?.status;
   const policyName = requestResult?.policy_name || policy?.name || "정책";
   const actionPolicyId = policy?.id || requestResult?.slug || policyId;
@@ -251,10 +511,16 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
 
   const level = ELIGIBILITY_LEVELS[elig.level] || ELIGIBILITY_LEVELS.mid;
   const inputFamily = normalizeInputSummary(requestResult?.input_summary, currentFamily);
+  const criteria = dedupeCriteria(elig.criteria);
   const evidences = getEvidences(requestResult);
-  const questions = getQuestions(requestResult);
+  const criteriaLabels = new Set(criteria.map((item) => item.label));
+  const questions = getQuestions(requestResult).filter(
+    (question) => !criteriaLabels.has(question.field_name || question.label)
+  );
   const isWaiting = isApiMode && POLLING_STATUSES.has(requestStatus);
   const isFailed = isApiMode && (requestStatus === REQUEST_STATUS.FAILED || requestError);
+  const isPreparing = creatingRequest || (loadingResult && !requestResult);
+  const isRunning = isPreparing || isWaiting;
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -271,28 +537,40 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
             {policyName} · {isWaiting ? "분석 중" : level.label}
           </p>
           <p className="mb-0" style={{ fontSize: 14, color: "var(--dd-stone-600)" }}>
-            {requestError || elig.summary} {!isFailed && !isWaiting ? level.desc : ""}
+            {requestError ||
+              (creatingRequest
+                ? "입력 조건을 정리해 분석 요청을 만들고 있어요."
+                : elig.summary)} {!isFailed && !isWaiting && !creatingRequest ? level.desc : ""}
           </p>
         </div>
       </div>
 
+      {isRunning && (
+        <AnalysisProgress
+          authLoading={authLoading}
+          creatingRequest={creatingRequest}
+          loadingResult={loadingResult}
+          isWaiting={isWaiting}
+        />
+      )}
+
       {/* 분석 결과 표 */}
       <div className="dd-card" style={{ overflow: "hidden" }}>
         <div className="px-3 py-3 d-flex align-items-center justify-content-between" style={{ borderBottom: "1px solid var(--dd-stone-100)" }}>
-          <strong style={{ fontSize: 15 }}>조건별 분석 결과</strong>
-          <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={reanalyze} disabled={analyzing}>
+          <strong style={{ fontSize: 15 }}>핵심 조건 확인</strong>
+          <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={reanalyze} disabled={analyzing || creatingRequest || !activeRequestId}>
             <Icon name="Wand2" size={15} />
-            {analyzing || loadingResult ? "조회 중..." : requestId ? "다시 조회" : "다시 분석하기"}
+            {analyzing || loadingResult ? "조회 중..." : "다시 조회"}
           </button>
         </div>
-        {isWaiting || (loadingResult && !requestResult) ? (
+        {isPreparing || isWaiting ? (
           <div className="p-3 dd-subtle" style={{ fontSize: 14 }}>
             분석 결과를 불러오고 있어요.
           </div>
         ) : (
           <table className="dd-table">
             <tbody>
-              {elig.criteria.map((c) => {
+              {criteria.map((c) => {
                 const status = String(c.status || "check").toLowerCase();
                 const sm = STATUS_META[status] || STATUS_META.check;
                 return (
@@ -323,8 +601,10 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
           </div>
           <ul className="mb-0 ps-3" style={{ color: "var(--dd-stone-600)", fontSize: 14 }}>
             {questions.map((question, index) => (
-              <li key={question.id || question.label || index}>
-                {typeof question === "string" ? question : question.question || question.label}
+              <li key={question.follow_up_id || question.id || question.label || index}>
+                {typeof question === "string"
+                  ? question
+                  : question.question_text || question.question || question.label}
               </li>
             ))}
           </ul>
@@ -375,7 +655,7 @@ export default function EligibilityResult({ policyId, requestId, family = DEFAUL
       <div className="dd-card-soft" style={{ padding: 18 }}>
         <div className="d-flex align-items-center gap-2 mb-2">
           <Icon name="ClipboardList" size={16} style={{ color: "var(--dd-coral)" }} />
-          <strong style={{ fontSize: 14 }}>분석에 사용한 입력 정보</strong>
+          <strong style={{ fontSize: 14 }}>분석 기준</strong>
         </div>
         <div className="d-flex flex-wrap gap-2">
           {familyRows(inputFamily).map((r) => (

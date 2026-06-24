@@ -10,8 +10,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import eligibilityApi from "@/apis/eligibilityApi";
-import { getApiErrorMessage } from "@/apis/axiosConfig";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import Modal from "@/app/components/Modal";
@@ -20,12 +18,6 @@ import DisclaimerNote from "@/app/components/DisclaimerNote";
 import PolicyCompare from "@/app/components/PolicyCompare";
 import ApplyPrep from "@/app/components/ApplyPrep";
 import { getPolicy, getRelated } from "@/app/data/policies";
-import {
-  DEFAULT_FAMILY,
-  FAMILY_PROFILE_KEY,
-  createRecommendationPayload,
-  normalizeFamilyProfile,
-} from "@/app/data/family";
 import { useLiked } from "@/app/data/useLiked";
 
 const TABS = [
@@ -49,8 +41,6 @@ export default function PolicyDetailPage() {
   const policy = getPolicy(id);
   const [tab, setTab] = useState("target");
   const [modal, setModal] = useState(null);
-  const [eligibilityPending, setEligibilityPending] = useState(false);
-  const [eligibilityError, setEligibilityError] = useState("");
   const {
     has: isLiked,
     toggle: toggleLike,
@@ -58,24 +48,6 @@ export default function PolicyDetailPage() {
     error: favoriteError,
   } = useLiked();
   const liked = isLiked(id);
-
-  const readFamilyProfile = () => {
-    if (typeof window === "undefined") {
-      return DEFAULT_FAMILY;
-    }
-
-    const storedFamily = window.localStorage.getItem(FAMILY_PROFILE_KEY);
-    if (!storedFamily) {
-      return DEFAULT_FAMILY;
-    }
-
-    try {
-      return normalizeFamilyProfile(JSON.parse(storedFamily));
-    } catch {
-      window.localStorage.removeItem(FAMILY_PROFILE_KEY);
-      return DEFAULT_FAMILY;
-    }
-  };
 
   if (!policy) {
     return (
@@ -115,51 +87,13 @@ export default function PolicyDetailPage() {
     );
   };
 
-  const startEligibilityRequest = async () => {
-    setEligibilityPending(true);
-    setEligibilityError("");
-
-    try {
-      const userConditions = createRecommendationPayload(readFamilyProfile());
-      const policyIdentifier = policy.backendSlug || policy.id;
-      const response = await eligibilityApi.createRequest({
-        policyId: policyIdentifier,
-        userConditions,
-        sourceRefId: policyIdentifier,
-      });
-      const requestId = response?.request_id || response?.requestId;
-
-      if (!requestId) {
-        throw new Error("분석 요청 번호를 받지 못했어요.");
-      }
-
-      router.push(
-        `/policies/${policy.id}/eligibility?requestId=${encodeURIComponent(requestId)}`
-      );
-    } catch (error) {
-      if (error?.status === 401) {
-        const params = new URLSearchParams({
-          next: `/policies/${policy.id}`,
-        });
-        router.push(`/login?${params.toString()}`);
-        return;
-      }
-
-      setEligibilityError(
-        getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
-      );
-    } finally {
-      setEligibilityPending(false);
-    }
-  };
-
   const handleAction = (key) => {
     if (key === "chat") {
       router.push("/chat");
       return;
     }
     if (key === "eligibility") {
-      startEligibilityRequest();
+      router.push(`/eligibility?policyId=${policy.id}&source=policy-detail`);
       return;
     }
     setModal(key);
@@ -285,21 +219,9 @@ export default function PolicyDetailPage() {
           <p className="fw-bold mb-3" style={{ fontSize: 16, color: "var(--dd-ink)" }}>다음으로 무엇을 할까요?</p>
           <ActionButtons
             actions={["eligibility", "compare", "apply", "chat"]}
-            disabledActions={eligibilityPending ? ["eligibility"] : []}
-            loadingActions={eligibilityPending ? ["eligibility"] : []}
             policyId={policy.id}
             onAction={handleAction}
           />
-          {eligibilityPending && (
-            <p className="dd-disclaimer mt-3 mb-0">
-              <Icon name="LoaderCircle" size={13} /> 지원 가능성 분석 요청을 시작하고 있어요.
-            </p>
-          )}
-          {eligibilityError && (
-            <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
-              <Icon name="CircleAlert" size={13} /> {eligibilityError}
-            </p>
-          )}
           <div className="mt-3"><DisclaimerNote /></div>
         </div>
       </main>
