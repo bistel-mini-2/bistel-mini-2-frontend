@@ -106,6 +106,52 @@ const normalizeCriteria = (result) => {
   ];
 };
 
+const CONDITION_LABELS = {
+  lifeArray: "대상 상황",
+  trgterIndvdlArray: "대상 특성",
+  intrsThemaArray: "관심 주제",
+  target_description: "지원대상",
+  support_target: "지원대상",
+  selection_criteria: "선정기준",
+  income: "소득 기준",
+  income_level: "소득 기준",
+  special: "대상 특성",
+  stage: "대상 상황",
+  childAge: "자녀 연령",
+  child_age: "자녀 연령",
+  region: "거주 지역",
+};
+
+const stripInternalPrefix = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^([A-Za-z_][A-Za-z0-9_]*):\s*(.+)$/);
+
+  if (!match) {
+    return text;
+  }
+
+  const [, fieldName, content] = match;
+  const label = CONDITION_LABELS[fieldName];
+
+  return label ? `${label}: ${content.trim()}` : content.trim();
+};
+
+const formatCriterionText = (value) =>
+  stripInternalPrefix(value)
+    .replace(/\blifeArray\b/g, "대상 상황")
+    .replace(/\btrgterIndvdlArray\b/g, "대상 특성")
+    .replace(/\bintrsThemaArray\b/g, "관심 주제")
+    .replace(/\btarget_description\b/g, "지원대상")
+    .replace(/\bselection_criteria\b/g, "선정기준")
+    .replace(/\bsupport_target\b/g, "지원대상");
+
+const formatCriteriaForDisplay = (criteria) =>
+  criteria.map((item) => ({
+    ...item,
+    label: formatCriterionText(item.label),
+    note: formatCriterionText(item.note),
+  }));
+
 const normalizeInputSummary = (inputSummary, fallbackFamily) => {
   if (!inputSummary) {
     return fallbackFamily;
@@ -118,16 +164,46 @@ const normalizeInputSummary = (inputSummary, fallbackFamily) => {
   });
 };
 
+const normalizeEvidenceText = (value) =>
+  String(value || "")
+    .replace(/\s+/g, " ")
+    .trim();
+
 const getEvidences = (result) => {
-  if (Array.isArray(result?.evidences)) {
-    return result.evidences;
-  }
+  const rawEvidences = Array.isArray(result?.evidences)
+    ? result.evidences
+    : Array.isArray(result?.evidence)
+      ? result.evidence
+      : [];
+  const seen = new Set();
+  let hasSummaryEvidence = false;
 
-  if (Array.isArray(result?.evidence)) {
-    return result.evidence;
-  }
+  return rawEvidences.filter((evidence) => {
+    if (!evidence || typeof evidence !== "object") {
+      return false;
+    }
 
-  return [];
+    const role = String(evidence.evidence_role || "").toUpperCase();
+    if (role === "SUMMARY") {
+      if (hasSummaryEvidence) {
+        return false;
+      }
+      hasSummaryEvidence = true;
+    }
+
+    const key = [
+      role,
+      normalizeEvidenceText(evidence.snippet),
+      normalizeEvidenceText(evidence.source_title),
+      normalizeEvidenceText(evidence.source_url),
+    ].join("|");
+
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  });
 };
 
 const getQuestions = (result) => {
@@ -202,7 +278,13 @@ const readRecommendationInput = (recommendationRequestId) => {
   }
 };
 
-function AnalysisProgress({ authLoading, creatingRequest, loadingResult, isWaiting }) {
+function AnalysisProgress({
+  authLoading,
+  creatingRequest,
+  loadingResult,
+  isWaiting,
+  isRecommendationSource,
+}) {
   const steps = ["인증 확인", "요청 생성", "조건 비교", "결과 정리"];
   const activeStep = authLoading
     ? 0
@@ -234,7 +316,9 @@ function AnalysisProgress({ authLoading, creatingRequest, loadingResult, isWaiti
             </span>
           </div>
           <p className="mb-0 mt-1 dd-subtle" style={{ fontSize: 14 }}>
-            입력 조건을 정책 기준과 비교해서 지원 가능성을 정리하고 있어요.
+            {isRecommendationSource
+              ? "추천받을 때 입력한 조건을 이 정책 기준과 비교하고 있어요."
+              : "입력 조건을 정책 기준과 비교해서 지원 가능성을 정리하고 있어요."}
           </p>
           <div className="dd-analysis-bar mt-3" aria-hidden="true">
             <span style={{ width: progress }} />
@@ -511,7 +595,7 @@ export default function EligibilityResult({
 
   const level = ELIGIBILITY_LEVELS[elig.level] || ELIGIBILITY_LEVELS.mid;
   const inputFamily = normalizeInputSummary(requestResult?.input_summary, currentFamily);
-  const criteria = dedupeCriteria(elig.criteria);
+  const criteria = dedupeCriteria(formatCriteriaForDisplay(elig.criteria));
   const evidences = getEvidences(requestResult);
   const criteriaLabels = new Set(criteria.map((item) => item.label));
   const questions = getQuestions(requestResult).filter(
@@ -521,6 +605,8 @@ export default function EligibilityResult({
   const isFailed = isApiMode && (requestStatus === REQUEST_STATUS.FAILED || requestError);
   const isPreparing = creatingRequest || (loadingResult && !requestResult);
   const isRunning = isPreparing || isWaiting;
+  const isRecommendationSource = entrySource === ENTRY_SOURCE.RECOMMENDATION;
+  const sourceLabel = isRecommendationSource ? "추천 입력 조건 기준" : "입력 조건 기준";
 
   return (
     <div className="d-flex flex-column gap-4">
@@ -536,10 +622,17 @@ export default function EligibilityResult({
           <p className="mb-1 fw-bold" style={{ fontSize: 18, color: "var(--dd-ink)" }}>
             {policyName} · {isWaiting ? "분석 중" : level.label}
           </p>
+          {isRecommendationSource && (
+            <span className="dd-pill dd-pill-blue mb-2">
+              {sourceLabel}
+            </span>
+          )}
           <p className="mb-0" style={{ fontSize: 14, color: "var(--dd-stone-600)" }}>
             {requestError ||
               (creatingRequest
-                ? "입력 조건을 정리해 분석 요청을 만들고 있어요."
+                ? isRecommendationSource
+                  ? "추천 입력 조건을 정리해 분석 요청을 만들고 있어요."
+                  : "입력 조건을 정리해 분석 요청을 만들고 있어요."
                 : elig.summary)} {!isFailed && !isWaiting && !creatingRequest ? level.desc : ""}
           </p>
         </div>
@@ -551,6 +644,7 @@ export default function EligibilityResult({
           creatingRequest={creatingRequest}
           loadingResult={loadingResult}
           isWaiting={isWaiting}
+          isRecommendationSource={isRecommendationSource}
         />
       )}
 
@@ -612,17 +706,25 @@ export default function EligibilityResult({
       )}
 
       {evidences.length > 0 && (
-        <div className="dd-card" style={{ overflow: "hidden" }}>
-          <div className="px-3 py-3" style={{ borderBottom: "1px solid var(--dd-stone-100)" }}>
-            <strong style={{ fontSize: 15 }}>판정 근거</strong>
+        <div className="dd-card dd-evidence-card">
+          <div className="dd-section-head">
+            <span className="dd-icon-tile dd-tile-blue" style={{ width: 34, height: 34, borderRadius: 12 }}>
+              <Icon name="FileText" size={17} />
+            </span>
+            <div>
+              <strong style={{ fontSize: 15 }}>판정 근거</strong>
+              <p className="mb-0 dd-subtle" style={{ fontSize: 13 }}>
+                판정에 참고한 정책 기준을 보여드려요.
+              </p>
+            </div>
           </div>
-          <div className="d-flex flex-column gap-3 p-3">
+          <div className="dd-evidence-list">
             {evidences.map((evidence, index) => {
               const role = String(evidence.evidence_role || "").toUpperCase();
               return (
-                <div key={evidence.chunk_id || index} className="d-flex flex-column gap-1">
+                <div key={evidence.chunk_id || index} className="dd-evidence-item">
                   <div className="d-flex align-items-center gap-2 flex-wrap">
-                    <span className="dd-pill dd-pill-stone">
+                    <span className="dd-pill dd-pill-blue">
                       {EVIDENCE_ROLE_LABELS[role] || "근거"}
                     </span>
                     {evidence.source_url ? (
@@ -641,7 +743,7 @@ export default function EligibilityResult({
                       </span>
                     )}
                   </div>
-                  <p className="mb-0" style={{ color: "var(--dd-stone-600)", fontSize: 14 }}>
+                  <p className="mb-0 mt-2" style={{ color: "var(--dd-stone-600)", fontSize: 14, lineHeight: 1.65 }}>
                     {evidence.snippet}
                   </p>
                 </div>
@@ -652,15 +754,23 @@ export default function EligibilityResult({
       )}
 
       {/* 입력 정보 요약 */}
-      <div className="dd-card-soft" style={{ padding: 18 }}>
-        <div className="d-flex align-items-center gap-2 mb-2">
-          <Icon name="ClipboardList" size={16} style={{ color: "var(--dd-coral)" }} />
-          <strong style={{ fontSize: 14 }}>분석 기준</strong>
+      <div className="dd-card dd-input-summary-card">
+        <div className="dd-section-head">
+          <span className="dd-icon-tile dd-tile-rose" style={{ width: 34, height: 34, borderRadius: 12 }}>
+            <Icon name="ClipboardList" size={17} />
+          </span>
+          <div>
+            <strong style={{ fontSize: 15 }}>{sourceLabel}</strong>
+            <p className="mb-0 dd-subtle" style={{ fontSize: 13 }}>
+              이 조건을 기준으로 정책 조건과 비교했어요.
+            </p>
+          </div>
         </div>
-        <div className="d-flex flex-wrap gap-2">
+        <div className="dd-input-summary-grid">
           {familyRows(inputFamily).map((r) => (
-            <span key={r.label} className="dd-pill dd-pill-stone">
-              {r.label}: {r.value}
+            <span key={r.label} className="dd-input-summary-chip">
+              <span>{r.label}</span>
+              <strong>{r.value}</strong>
             </span>
           ))}
         </div>

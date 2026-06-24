@@ -726,10 +726,17 @@ function RecommendResultContent() {
         throw new Error("분석 요청 번호를 받지 못했어요.");
       }
 
+      const params = new URLSearchParams({
+        requestId: String(eligibilityRequestId),
+        source: "recommendation",
+      });
+
+      if (requestId) {
+        params.set("recommendationRequestId", String(requestId));
+      }
+
       router.push(
-        `/policies/${encodeURIComponent(policyId)}/eligibility?requestId=${encodeURIComponent(
-          eligibilityRequestId
-        )}`
+        `/policies/${encodeURIComponent(policyId)}/eligibility?${params.toString()}`
       );
     } catch (error) {
       if (error?.status === 401) {
