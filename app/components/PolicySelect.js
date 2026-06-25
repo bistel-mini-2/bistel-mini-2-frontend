@@ -6,14 +6,28 @@
 import Icon from "@/app/components/Icon";
 import { POLICIES } from "@/app/data/policies";
 
+const shortenLabel = (value, maxLength = 34) => {
+  if (!value) return "";
+  return value.length > maxLength ? value.slice(0, maxLength - 1) + "…" : value;
+};
+
 export default function PolicySelect({
   value,
   onChange,
   label,
   exclude = [],
+  extraOptions = [],
   placeholder = "정책을 선택하세요",
 }) {
-  const options = POLICIES.filter((p) => !exclude.includes(p.id) || p.id === value);
+  const optionMap = new Map();
+  [...extraOptions, ...POLICIES].forEach((policy) => {
+    if (policy?.id) {
+      optionMap.set(policy.id, policy);
+    }
+  });
+  const options = [...optionMap.values()].filter(
+    (p) => !exclude.includes(p.id) || p.id === value
+  );
 
   return (
     <div>
@@ -30,7 +44,7 @@ export default function PolicySelect({
           </option>
           {options.map((p) => (
             <option key={p.id} value={p.id}>
-              {p.name} · {p.tag}
+              {shortenLabel(p.name)}
             </option>
           ))}
         </select>
