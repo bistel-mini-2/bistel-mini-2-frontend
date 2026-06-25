@@ -251,6 +251,10 @@ body {
   color: var(--dd-coral);
   background: var(--dd-coral-50);
 }
+.dd-del-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
 
 /* 관심 정책 하트 버튼 (정책 카드 우상단) */
 .dd-heart-btn {

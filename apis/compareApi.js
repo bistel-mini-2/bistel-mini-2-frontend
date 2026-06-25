@@ -19,6 +19,17 @@ const getCompareHistory = ({ page = 1, size = 20, signal } = {}) =>
     preserveResponse: true,
   });
 
-const compareApi = { comparePolicies, getCompareHistory };
+const deleteCompareHistory = (historyId) =>
+  axios.delete(`/api/v1/users/me/compare-history/${historyId}`);
+
+const deleteAllCompareHistory = () =>
+  axios.delete("/api/v1/users/me/compare-history");
+
+const compareApi = {
+  comparePolicies,
+  getCompareHistory,
+  deleteCompareHistory,
+  deleteAllCompareHistory,
+};
 
 export default compareApi;

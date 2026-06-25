@@ -112,11 +112,11 @@ const getPasswordValidationMessage = (password) => {
 };
 
 // 리스트 상단 — 건수 + 전체 삭제
-function ListHeader({ text, onClear, label = "전체 삭제" }) {
+function ListHeader({ text, onClear, label = "전체 삭제", disabled = false }) {
   return (
     <div className="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
       <span className="dd-subtle" style={{ fontSize: 14 }}>{text}</span>
-      <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={onClear}>
+      <button type="button" className="dd-btn dd-btn-ghost dd-btn-sm" onClick={onClear} disabled={disabled}>
         <Icon name="Trash2" size={16} /> {label}
       </button>
     </div>
@@ -124,9 +124,9 @@ function ListHeader({ text, onClear, label = "전체 삭제" }) {
 }
 
 // 개별 삭제 버튼
-function DelBtn({ onClick, style }) {
+function DelBtn({ onClick, style, disabled = false }) {
   return (
-    <button type="button" className="dd-del-btn" onClick={onClick} aria-label="삭제" style={style}>
+    <button type="button" className="dd-del-btn" onClick={onClick} aria-label="삭제" style={style} disabled={disabled}>
       <Icon name="Trash2" size={16} />
     </button>
   );
@@ -228,6 +228,10 @@ export default function MyPage() {
   });
   const [compareLoading, setCompareLoading] = useState(false);
   const [compareError, setCompareError] = useState("");
+  const [compareActionError, setCompareActionError] = useState("");
+  const [pendingCompareDeleteId, setPendingCompareDeleteId] = useState(null);
+  const [isClearingCompares, setIsClearingCompares] = useState(false);
+  const [compareReloadKey, setCompareReloadKey] = useState(0);
   const [chats, setChats] = useState(INIT_CHAT);
 
   const liked = likedItems.map(toFavoritePolicyCard);
@@ -237,6 +241,53 @@ export default function MyPage() {
       router.replace("/login");
     }
   }, [isAuthenticated, isLoading, router]);
+
+  const refreshCompareHistory = (nextPage = comparePage) => {
+    if (nextPage !== comparePage) {
+      setComparePage(nextPage);
+      return;
+    }
+
+    setCompareReloadKey((current) => current + 1);
+  };
+
+  const handleDeleteCompareHistory = async (historyId) => {
+    const normalizedId = String(historyId);
+    setPendingCompareDeleteId(normalizedId);
+    setCompareActionError("");
+
+    try {
+      await compareApi.deleteCompareHistory(normalizedId);
+      const nextTotal = Math.max((compareMeta.total || compares.length) - 1, 0);
+      const nextTotalPages = Math.ceil(nextTotal / COMPARE_HISTORY_PAGE_SIZE);
+      const shouldMovePreviousPage =
+        compares.length === 1 && comparePage > 1 && comparePage > nextTotalPages;
+
+      refreshCompareHistory(shouldMovePreviousPage ? comparePage - 1 : comparePage);
+    } catch (error) {
+      setCompareActionError(
+        getApiErrorMessage(error, "비교 이력을 삭제하지 못했어요.")
+      );
+    } finally {
+      setPendingCompareDeleteId(null);
+    }
+  };
+
+  const handleClearCompareHistory = async () => {
+    setIsClearingCompares(true);
+    setCompareActionError("");
+
+    try {
+      await compareApi.deleteAllCompareHistory();
+      refreshCompareHistory(1);
+    } catch (error) {
+      setCompareActionError(
+        getApiErrorMessage(error, "비교 이력을 모두 삭제하지 못했어요.")
+      );
+    } finally {
+      setIsClearingCompares(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoading || !isAuthenticated) {
@@ -294,6 +345,7 @@ export default function MyPage() {
 
         if (!controller.signal.aborted) {
           setCompares(response?.data?.items || []);
+          setCompareActionError("");
           setCompareMeta(
             response?.meta || {
               page: comparePage,
@@ -325,7 +377,7 @@ export default function MyPage() {
     loadCompareHistory();
 
     return () => controller.abort();
-  }, [comparePage, isAuthenticated, isLoading]);
+  }, [comparePage, compareReloadKey, isAuthenticated, isLoading]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoading || !isAuthenticated) {
@@ -990,17 +1042,18 @@ export default function MyPage() {
                 <>
                   <ListHeader
                     text={`비교한 기록 ${compareMeta.total || compares.length}건`}
-                    onClear={() => {
-                      setCompares([]);
-                      setComparePage(1);
-                      setCompareMeta({
-                        page: 1,
-                        size: COMPARE_HISTORY_PAGE_SIZE,
-                        total: 0,
-                        total_pages: 0,
-                      });
-                    }}
+                    onClear={handleClearCompareHistory}
+                    disabled={isClearingCompares || pendingCompareDeleteId !== null}
+                    label={isClearingCompares ? "삭제 중" : "전체 삭제"}
                   />
+                  {compareActionError && (
+                    <div className="dd-card-soft mb-3" style={{ padding: 14, borderColor: "var(--dd-amber-200)" }}>
+                      <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-amber)" }}>
+                        <Icon name="CircleAlert" size={16} />
+                        <span style={{ fontSize: 14 }}>{compareActionError}</span>
+                      </div>
+                    </div>
+                  )}
                   <div className="d-flex flex-column gap-3">
                     {compares.map((item) => (
                       <div key={item.id} className="dd-card" style={{ padding: "18px 20px" }}>
@@ -1027,10 +1080,10 @@ export default function MyPage() {
                               <Icon name="CalendarDays" size={14} /> {formatCompareDate(item.compared_at)}
                             </span>
                             <DelBtn
-                              onClick={() =>
-                                setCompares((current) =>
-                                  current.filter((compare) => compare.id !== item.id)
-                                )
+                              onClick={() => handleDeleteCompareHistory(item.id)}
+                              disabled={
+                                isClearingCompares ||
+                                pendingCompareDeleteId === String(item.id)
                               }
                             />
                           </div>
