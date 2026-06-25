@@ -7,9 +7,9 @@
 // 탭: 가족 프로필 / 관심 정책 / 신청 체크리스트 / 추천 이력 / 비교 이력 / 상담 이력
 // 저장 리스트(관심·추천·비교·상담)는 개별 삭제 + 전체 삭제를 지원한다.
 // =========================================================================
-import { startTransition, useContext, useEffect, useState } from "react";
+import { Suspense, startTransition, useContext, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
@@ -38,6 +38,7 @@ const TABS = [
   { key: "compare", label: "비교 이력", icon: "GitCompare" },
   { key: "chatHistory", label: "상담 이력", icon: "MessageCircle" },
 ];
+const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
 
 // 더미 저장 데이터(초기값) — 실제로는 API/스토리지에서 로드
 const CHECKLIST = [
@@ -67,6 +68,11 @@ const EMPTY_PASSWORD_DRAFT = {
   currentPassword: "",
   newPassword: "",
   newPasswordConfirm: "",
+};
+
+const getPositivePage = (value) => {
+  const page = Number.parseInt(value || "1", 10);
+  return Number.isFinite(page) && page > 0 ? page : 1;
 };
 
 const getNicknameValidationMessage = (nickname) => {
@@ -184,15 +190,17 @@ function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxW
   );
 }
 
-export default function MyPage() {
+function MyPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const {
     user: authUser,
     isAuthenticated,
     isLoading,
     updateUserAuth,
   } = useContext(AuthContext);
-  const [tab, setTab] = useState("account");
+  const selectedTab = searchParams.get("tab");
+  const tab = TAB_KEYS.has(selectedTab) ? selectedTab : "account";
   const [userProfile, setUserProfile] = useState(authUser);
   const [userDraft, setUserDraft] = useState({
     nickname: authUser?.nickname || "",
@@ -219,7 +227,8 @@ export default function MyPage() {
   } = useLiked();
   const [recs, setRecs] = useState(INIT_REC);
   const [compares, setCompares] = useState([]);
-  const [comparePage, setComparePage] = useState(1);
+  const comparePage =
+    tab === "compare" ? getPositivePage(searchParams.get("page")) : 1;
   const [compareMeta, setCompareMeta] = useState({
     page: 1,
     size: COMPARE_HISTORY_PAGE_SIZE,
@@ -238,13 +247,29 @@ export default function MyPage() {
 
   useEffect(() => {
     if (!isLoading && !isAuthenticated) {
-      router.replace("/login");
+      const nextPath =
+        typeof window === "undefined"
+          ? "/mypage"
+          : `${window.location.pathname}${window.location.search}`;
+      router.replace(`/login?next=${encodeURIComponent(nextPath)}`);
     }
   }, [isAuthenticated, isLoading, router]);
 
+  const handleTabChange = (nextTab) => {
+    const nextPath =
+      nextTab === "account" ? "/mypage" : `/mypage?tab=${nextTab}`;
+    router.replace(nextPath, { scroll: false });
+  };
+
+  const moveComparePage = (nextPage) => {
+    const page = Math.max(Number(nextPage) || 1, 1);
+    const pageQuery = page > 1 ? `&page=${page}` : "";
+    router.replace(`/mypage?tab=compare${pageQuery}`, { scroll: false });
+  };
+
   const refreshCompareHistory = (nextPage = comparePage) => {
     if (nextPage !== comparePage) {
-      setComparePage(nextPage);
+      moveComparePage(nextPage);
       return;
     }
 
@@ -614,7 +639,7 @@ export default function MyPage() {
         {/* 탭 */}
         <div className="dd-tabs">
           {TABS.map((t) => (
-            <button key={t.key} type="button" className={"dd-tab" + (tab === t.key ? " is-active" : "")} onClick={() => setTab(t.key)}>
+            <button key={t.key} type="button" className={"dd-tab" + (tab === t.key ? " is-active" : "")} onClick={() => handleTabChange(t.key)}>
               <span className="d-inline-flex align-items-center gap-1"><Icon name={t.icon} size={14} /> {t.label}</span>
             </button>
           ))}
@@ -1058,7 +1083,11 @@ export default function MyPage() {
                     {compares.map((item) => (
                       <div key={item.id} className="dd-card" style={{ padding: "18px 20px" }}>
                         <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
-                          <div className="d-flex align-items-center gap-2 flex-wrap" style={{ flex: 1 }}>
+                          <Link
+                            href={`/compare?a=${item.policy_a_slug}&b=${item.policy_b_slug}`}
+                            className="d-flex align-items-center gap-2 flex-wrap text-decoration-none"
+                            style={{ flex: 1, color: "var(--dd-ink)" }}
+                          >
                             <span className="dd-cmp-chip">
                               <span className="dd-icon-tile dd-tile-amber" style={{ width: 30, height: 30, borderRadius: 999 }}>
                                 <Icon name="FileText" size={16} />
@@ -1074,7 +1103,7 @@ export default function MyPage() {
                               </span>
                               <span className="fw-semibold" style={{ fontSize: 14 }}>{item.policy_b_name}</span>
                             </span>
-                          </div>
+                          </Link>
                           <div className="d-flex align-items-center gap-2" style={{ flex: "none" }}>
                             <span className="dd-subtle d-flex align-items-center gap-1" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
                               <Icon name="CalendarDays" size={14} /> {formatCompareDate(item.compared_at)}
@@ -1103,7 +1132,7 @@ export default function MyPage() {
                         type="button"
                         className="dd-btn dd-btn-ghost dd-btn-sm"
                         disabled={comparePage <= 1 || compareLoading}
-                        onClick={() => setComparePage((current) => current - 1)}
+                        onClick={() => moveComparePage(comparePage - 1)}
                       >
                         이전
                       </button>
@@ -1114,7 +1143,7 @@ export default function MyPage() {
                         type="button"
                         className="dd-btn dd-btn-ghost dd-btn-sm"
                         disabled={comparePage >= compareMeta.total_pages || compareLoading}
-                        onClick={() => setComparePage((current) => current + 1)}
+                        onClick={() => moveComparePage(comparePage + 1)}
                       >
                         다음
                       </button>
@@ -1159,5 +1188,24 @@ export default function MyPage() {
         </div>
       </main>
     </div>
+  );
+}
+
+export default function MyPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="dd-page">
+          <Header />
+          <main className="dd-shell" style={{ paddingTop: 32, paddingBottom: 64 }}>
+            <div className="dd-card dd-card-lg" style={{ padding: 24, maxWidth: 520 }}>
+              <strong style={{ fontSize: 16 }}>마이페이지를 불러오는 중...</strong>
+            </div>
+          </main>
+        </div>
+      }
+    >
+      <MyPageContent />
+    </Suspense>
   );
 }
