@@ -290,7 +290,7 @@ export const POLICIES = [
 
 // ---- 조회 헬퍼 ----
 export function getPolicy(id) {
-  return POLICIES.find((p) => p.id === id) || null;
+  return POLICIES.find((p) => p.id === id || p.backendSlug === id) || null;
 }
 export function getPolicies(ids = []) {
   return ids.map(getPolicy).filter(Boolean);
