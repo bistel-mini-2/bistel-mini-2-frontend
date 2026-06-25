@@ -15,6 +15,7 @@ import Icon from "@/app/components/Icon";
 import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
+import compareApi from "@/apis/compareApi";
 import { AuthContext } from "@/contexts/AuthContext";
 import familyProfileApi from "@/apis/familyProfileApi";
 import userApi from "@/apis/userApi";
@@ -48,23 +49,17 @@ const INIT_REC = [
   { id: 1, date: "2026.06.10", note: "출산 직후 · 0세 · 맞벌이 기준", count: 5 },
   { id: 2, date: "2026.05.28", note: "임신 중 · 서울 기준", count: 4 },
 ];
-// 비교 이력 — 비교한 두 정책(a, b) + 비교 날짜 + 한 줄 메모/태그
-const INIT_COMPARE = [
-  { id: 1, a: "parent-allowance", b: "child-allowance", date: "2026.06.14", note: "매달 현금으로 받는 두 지원 비교", tag: "양육비·수당" },
-  { id: 2, a: "first-meet", b: "postnatal-care", date: "2026.06.07", note: "출산 직후 챙겨야 할 바우처", tag: "바우처" },
-  { id: 3, a: "care-service", b: "parent-allowance", date: "2026.05.30", note: "복직 전 돌봄 공백 어떻게 메울까", tag: "돌봄" },
-];
 const INIT_CHAT = [
   { id: 1, date: "2026.06.12", q: "부모급여랑 아동수당 뭐가 달라?", tag: "비교" },
   { id: 2, date: "2026.06.09", q: "첫만남이용권 신청 준비물", tag: "신청준비" },
   { id: 3, date: "2026.06.01", q: "어린이집 다녀도 아이돌봄 되나요?", tag: "가능성" },
 ];
 
-const tileTone = (t) => (t === "coral" ? "rose" : t);
 const NICKNAME_MIN_LENGTH = 2;
 const NICKNAME_MAX_LENGTH = 100;
 const PASSWORD_MIN_LENGTH = 8;
 const PASSWORD_MAX_LENGTH = 72;
+const COMPARE_HISTORY_PAGE_SIZE = 10;
 const ENGLISH_LETTER_PATTERN = /[A-Za-z]/;
 const NUMBER_PATTERN = /\d/;
 const SPECIAL_CHARACTER_PATTERN = /[!"#$%&'()*+,\-./:;<=>?@\[\]\\^_`{|}~]/;
@@ -156,6 +151,23 @@ function toFavoritePolicyCard(item) {
   };
 }
 
+function formatCompareDate(value) {
+  if (!value) {
+    return "비교일 정보 없음";
+  }
+
+  const comparedAt = new Date(value);
+  if (Number.isNaN(comparedAt.getTime())) {
+    return "비교일 정보 없음";
+  }
+
+  return new Intl.DateTimeFormat("ko-KR", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(comparedAt);
+}
+
 // 빈 상태
 function EmptyState({ icon, tile = "rose", title, desc, href, cta, ctaIcon, maxWidth = 560 }) {
   return (
@@ -206,7 +218,16 @@ export default function MyPage() {
     refresh: refreshLiked,
   } = useLiked();
   const [recs, setRecs] = useState(INIT_REC);
-  const [compares, setCompares] = useState(INIT_COMPARE);
+  const [compares, setCompares] = useState([]);
+  const [comparePage, setComparePage] = useState(1);
+  const [compareMeta, setCompareMeta] = useState({
+    page: 1,
+    size: COMPARE_HISTORY_PAGE_SIZE,
+    total: 0,
+    total_pages: 0,
+  });
+  const [compareLoading, setCompareLoading] = useState(false);
+  const [compareError, setCompareError] = useState("");
   const [chats, setChats] = useState(INIT_CHAT);
 
   const liked = likedItems.map(toFavoritePolicyCard);
@@ -252,6 +273,59 @@ export default function MyPage() {
       ignore = true;
     };
   }, [isAuthenticated, isLoading, updateUserAuth]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || isLoading || !isAuthenticated) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadCompareHistory() {
+      setCompareLoading(true);
+      setCompareError("");
+
+      try {
+        const response = await compareApi.getCompareHistory({
+          page: comparePage,
+          size: COMPARE_HISTORY_PAGE_SIZE,
+          signal: controller.signal,
+        });
+
+        if (!controller.signal.aborted) {
+          setCompares(response?.data?.items || []);
+          setCompareMeta(
+            response?.meta || {
+              page: comparePage,
+              size: COMPARE_HISTORY_PAGE_SIZE,
+              total: 0,
+              total_pages: 0,
+            }
+          );
+        }
+      } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
+        setCompares([]);
+        setCompareMeta({
+          page: comparePage,
+          size: COMPARE_HISTORY_PAGE_SIZE,
+          total: 0,
+          total_pages: 0,
+        });
+        setCompareError(
+          getApiErrorMessage(error, "비교 이력을 불러오지 못했어요.")
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setCompareLoading(false);
+        }
+      }
+    }
+
+    loadCompareHistory();
+
+    return () => controller.abort();
+  }, [comparePage, isAuthenticated, isLoading]);
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoading || !isAuthenticated) {
@@ -895,49 +969,104 @@ export default function MyPage() {
           {/* 비교 이력 */}
           {tab === "compare" && (
             <div style={{ maxWidth: 760 }}>
-              {compares.length ? (
+              {compareLoading ? (
+                <div className="dd-card d-flex align-items-center gap-3" style={{ padding: 18 }}>
+                  <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+                  <span className="dd-subtle" style={{ fontSize: 14 }}>
+                    비교 이력을 불러오는 중이에요.
+                  </span>
+                </div>
+              ) : compareError ? (
+                <div className="dd-card-soft" style={{ padding: 18, borderColor: "var(--dd-amber-200)" }}>
+                  <div className="d-flex align-items-center gap-2 mb-2" style={{ color: "var(--dd-amber)" }}>
+                    <Icon name="CircleAlert" size={17} />
+                    <strong style={{ fontSize: 15 }}>비교 이력을 불러오지 못했어요</strong>
+                  </div>
+                  <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>
+                    {compareError}
+                  </p>
+                </div>
+              ) : compares.length ? (
                 <>
-                  <ListHeader text={`비교한 기록 ${compares.length}건`} onClear={() => setCompares([])} />
+                  <ListHeader
+                    text={`비교한 기록 ${compareMeta.total || compares.length}건`}
+                    onClear={() => {
+                      setCompares([]);
+                      setComparePage(1);
+                      setCompareMeta({
+                        page: 1,
+                        size: COMPARE_HISTORY_PAGE_SIZE,
+                        total: 0,
+                        total_pages: 0,
+                      });
+                    }}
+                  />
                   <div className="d-flex flex-column gap-3">
-                    {compares.map((c) => {
-                      const a = getPolicy(c.a);
-                      const b = getPolicy(c.b);
-                      if (!a || !b) return null;
-                      return (
-                        <div key={c.id} className="dd-card" style={{ padding: "18px 20px" }}>
-                          <div className="d-flex align-items-start justify-content-between gap-3">
-                            <div className="d-flex align-items-center gap-2 flex-wrap" style={{ flex: 1 }}>
-                              <span className="dd-cmp-chip">
-                                <span className={"dd-icon-tile dd-tile-" + tileTone(a.tagTone)} style={{ width: 30, height: 30, borderRadius: 999 }}><Icon name={a.icon} size={16} /></span>
-                                <span className="fw-semibold" style={{ fontSize: 14 }}>{a.name}</span>
+                    {compares.map((item) => (
+                      <div key={item.id} className="dd-card" style={{ padding: "18px 20px" }}>
+                        <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                          <div className="d-flex align-items-center gap-2 flex-wrap" style={{ flex: 1 }}>
+                            <span className="dd-cmp-chip">
+                              <span className="dd-icon-tile dd-tile-amber" style={{ width: 30, height: 30, borderRadius: 999 }}>
+                                <Icon name="FileText" size={16} />
                               </span>
-                              <span style={{ color: "var(--dd-amber)" }}><Icon name="GitCompare" size={16} /></span>
-                              <span className="dd-cmp-chip">
-                                <span className={"dd-icon-tile dd-tile-" + tileTone(b.tagTone)} style={{ width: 30, height: 30, borderRadius: 999 }}><Icon name={b.icon} size={16} /></span>
-                                <span className="fw-semibold" style={{ fontSize: 14 }}>{b.name}</span>
+                              <span className="fw-semibold" style={{ fontSize: 14 }}>{item.policy_a_name}</span>
+                            </span>
+                            <span style={{ color: "var(--dd-amber)" }}>
+                              <Icon name="GitCompare" size={16} />
+                            </span>
+                            <span className="dd-cmp-chip">
+                              <span className="dd-icon-tile dd-tile-amber" style={{ width: 30, height: 30, borderRadius: 999 }}>
+                                <Icon name="FileText" size={16} />
                               </span>
-                            </div>
-                            <div className="d-flex align-items-center gap-2" style={{ flex: "none" }}>
-                              <span className="dd-subtle d-flex align-items-center gap-1" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
-                                <Icon name="CalendarDays" size={14} /> {c.date}
-                              </span>
-                              <DelBtn onClick={() => setCompares((v) => v.filter((x) => x.id !== c.id))} />
-                            </div>
+                              <span className="fw-semibold" style={{ fontSize: 14 }}>{item.policy_b_name}</span>
+                            </span>
                           </div>
-                          <div className="d-flex align-items-center gap-2 mt-3">
-                            <span className={"dd-pill dd-pill-" + a.tagTone}>{c.tag}</span>
-                            <span style={{ fontSize: 14, color: "var(--dd-stone-600)" }}>{c.note}</span>
-                          </div>
-                          <hr className="dd-divider my-3" />
-                          <div className="d-flex justify-content-end">
-                            <Link href={`/compare?a=${c.a}&b=${c.b}`} className="dd-btn dd-btn-amber dd-btn-sm">
-                              <Icon name="Repeat" size={15} /> 다시 비교하기
-                            </Link>
+                          <div className="d-flex align-items-center gap-2" style={{ flex: "none" }}>
+                            <span className="dd-subtle d-flex align-items-center gap-1" style={{ fontSize: 13, whiteSpace: "nowrap" }}>
+                              <Icon name="CalendarDays" size={14} /> {formatCompareDate(item.compared_at)}
+                            </span>
+                            <DelBtn
+                              onClick={() =>
+                                setCompares((current) =>
+                                  current.filter((compare) => compare.id !== item.id)
+                                )
+                              }
+                            />
                           </div>
                         </div>
-                      );
-                    })}
+                        <hr className="dd-divider my-3" />
+                        <div className="d-flex justify-content-end">
+                          <Link href={`/compare?a=${item.policy_a_slug}&b=${item.policy_b_slug}`} className="dd-btn dd-btn-amber dd-btn-sm">
+                            <Icon name="Repeat" size={15} /> 다시 비교하기
+                          </Link>
+                        </div>
+                      </div>
+                    ))}
                   </div>
+                  {compareMeta.total_pages > 1 && (
+                    <div className="d-flex justify-content-center align-items-center gap-3 mt-4">
+                      <button
+                        type="button"
+                        className="dd-btn dd-btn-ghost dd-btn-sm"
+                        disabled={comparePage <= 1 || compareLoading}
+                        onClick={() => setComparePage((current) => current - 1)}
+                      >
+                        이전
+                      </button>
+                      <strong style={{ fontSize: 14 }}>
+                        {compareMeta.page || comparePage} / {compareMeta.total_pages}
+                      </strong>
+                      <button
+                        type="button"
+                        className="dd-btn dd-btn-ghost dd-btn-sm"
+                        disabled={comparePage >= compareMeta.total_pages || compareLoading}
+                        onClick={() => setComparePage((current) => current + 1)}
+                      >
+                        다음
+                      </button>
+                    </div>
+                  )}
                 </>
               ) : (
                 <EmptyState icon="GitCompare" tile="amber" title="아직 비교한 정책이 없어요" desc="관심 있는 정책 두 개를 나란히 두고 우리 가족에게 더 맞는 쪽을 찾아보세요." href="/compare" cta="정책 비교하러 가기" ctaIcon="GitCompare" />

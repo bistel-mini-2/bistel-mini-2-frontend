@@ -9,6 +9,16 @@ const comparePolicies = ({ policyA, policyB, signal } = {}) =>
     signal,
   });
 
-const compareApi = { comparePolicies };
+const getCompareHistory = ({ page = 1, size = 20, signal } = {}) =>
+  axios.get("/api/v1/users/me/compare-history", {
+    params: {
+      page,
+      size,
+    },
+    signal,
+    preserveResponse: true,
+  });
+
+const compareApi = { comparePolicies, getCompareHistory };
 
 export default compareApi;
