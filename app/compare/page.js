@@ -13,21 +13,27 @@ import PolicyCompare from "@/app/components/PolicyCompare";
 
 function CompareInner() {
   const sp = useSearchParams();
-  const a = sp.get("a") || "parent-allowance";
-  const b = sp.get("b") || "child-allowance";
+  const a = sp.get("a") || "";
+  const b = sp.get("b") || "";
 
   return (
     <main className="dd-shell" style={{ paddingTop: 24, paddingBottom: 64 }}>
-      <div className="d-flex align-items-center gap-2 mb-4">
-        <span className="dd-icon-tile dd-tile-amber" style={{ width: 46, height: 46 }}>
-          <Icon name="GitCompare" size={22} />
-        </span>
-        <div>
-          <h1 className="dd-title" style={{ fontSize: 26 }}>정책 비교</h1>
-          <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>두 정책을 나란히 두고 우리 가족에게 더 맞는 쪽을 찾아보세요.</p>
+      <div className="d-flex align-items-start justify-content-between gap-3 mb-4 flex-wrap">
+        <div className="d-flex align-items-center gap-2">
+          <span className="dd-icon-tile dd-tile-amber" style={{ width: 46, height: 46, flex: "none" }}>
+            <Icon name="GitCompare" size={22} />
+          </span>
+          <div>
+            <h1 className="dd-title" style={{ fontSize: 26 }}>정책 비교</h1>
+            <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>두 정책을 나란히 두고 우리 가족에게 더 맞는 쪽을 찾아보세요.</p>
+          </div>
         </div>
+        <span className="dd-pill dd-pill-amber">
+          <Icon name="Link" size={13} />
+          딥링크 비교
+        </span>
       </div>
-      <PolicyCompare initialA={a} initialB={b} />
+      <PolicyCompare key={`${a}:${b}`} initialA={a} initialB={b} />
     </main>
   );
 }

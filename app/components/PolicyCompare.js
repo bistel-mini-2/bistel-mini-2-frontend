@@ -1,154 +1,349 @@
 "use client";
 
 // =========================================================================
-// 도담 — 정책 비교 (내용 컴포넌트)
+// 도담 - 정책 비교 (내용 컴포넌트)
 // /compare 페이지와 상세 모달이 함께 사용한다.
-// 정책 A/B 선택 → 요약 + 비교표(지원대상/지원내용/신청방법) + 핵심 차이 +
-// 상황별 선택 가이드 + 함께 확인하면 좋은 정책.
 // =========================================================================
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Icon from "@/app/components/Icon";
 import PolicySelect from "@/app/components/PolicySelect";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
-import { getPolicy, getRelated } from "@/app/data/policies";
+import { POLICIES, getPolicy } from "@/app/data/policies";
+import compareApi from "@/apis/compareApi";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 
-const ROWS = [
-  { key: "target", label: "지원대상" },
-  { key: "content", label: "지원내용" },
-  { key: "method", label: "신청방법" },
-];
+const DEFAULT_COMPARE_ERROR_MESSAGE =
+  "정책 비교 결과를 불러오지 못했어요. 정책을 다시 선택해 주세요.";
 
-function SummaryCard({ p, slot }) {
+const toApiSlug = (value) => {
+  const policy = getPolicy(value);
+  return policy?.backendSlug || value;
+};
+
+const toSelectOption = (policy) => {
+  if (!policy?.slug) return null;
+  return {
+    id: policy.slug,
+    name: policy.name,
+    tag: policy.summary?.condition || "비교 중인 정책",
+  };
+};
+
+const toStaticSelectOption = (value) => {
+  const policy = POLICIES.find(
+    (item) => item.id === value || item.backendSlug === value
+  );
+  if (!policy) return null;
+  return {
+    id: toApiSlug(policy.id),
+    name: policy.name,
+    tag: policy.tag,
+  };
+};
+
+const displayValue = (value) => {
+  if (value == null || value === "") {
+    return "공식 안내 확인 필요";
+  }
+  return value;
+};
+
+const compactValue = (value, maxLength = 120) => {
+  const text = displayValue(value);
+  return text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
+};
+
+function CompareRowCard({ row }) {
   return (
-    <div className="dd-card h-100" style={{ padding: 18 }}>
-      <div className="d-flex align-items-center gap-2 mb-2">
-        <span className="dd-pill dd-pill-outline">정책 {slot}</span>
-        {p && <span className={"dd-pill dd-pill-" + p.tagTone}>{p.tag}</span>}
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "minmax(120px, 0.55fr) minmax(0, 1fr) minmax(0, 1fr)",
+        gap: 12,
+        padding: "14px 0",
+        borderTop: "1px solid var(--dd-stone-100)",
+        alignItems: "stretch",
+      }}
+    >
+      <div className="d-flex align-items-center gap-2">
+        <strong style={{ fontSize: 14, color: "var(--dd-ink)", lineHeight: 1.35 }}>{row.field}</strong>
       </div>
-      {p ? (
+      {[
+        ["정책 A", row.a],
+        ["정책 B", row.b],
+      ].map(([label, value], index) => (
+        <div
+          key={index}
+          style={{
+            background: "var(--dd-stone-50)",
+            border: "1px solid var(--dd-stone-100)",
+            borderRadius: 12,
+            padding: "10px 12px",
+          }}
+          title={displayValue(value)}
+        >
+          <span className="dd-pill dd-pill-amber mb-2" style={{ fontSize: 11 }}>
+            {label}
+          </span>
+          <p className="mb-0" style={{ color: "var(--dd-stone-600)", fontSize: 13, lineHeight: 1.55 }}>
+            {compactValue(value)}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function SectionTitle({ icon, title, desc, tone = "amber" }) {
+  return (
+    <div className="d-flex align-items-center justify-content-between gap-3 mb-3 flex-wrap">
+      <div className="d-flex align-items-center gap-2">
+        <span className={`dd-icon-tile dd-tile-${tone}`} style={{ width: 34, height: 34, borderRadius: 12 }}>
+          <Icon name={icon} size={16} />
+        </span>
+        <div>
+          <strong style={{ fontSize: 15, color: "var(--dd-ink)" }}>{title}</strong>
+          {desc && <p className="mb-0 dd-subtle" style={{ fontSize: 12 }}>{desc}</p>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SummaryCard({ policy, slot }) {
+  return (
+    <div
+      className="dd-card h-100"
+      style={{
+        padding: 18,
+        borderTop: "4px solid var(--dd-amber-200)",
+        minHeight: 190,
+      }}
+    >
+      <div className="d-flex align-items-center justify-content-between gap-2 mb-3">
+        <span className="dd-pill dd-pill-amber">정책 {slot}</span>
+        {policy && <span className="dd-pill dd-pill-stone">선택됨</span>}
+      </div>
+      {policy ? (
         <>
           <div className="d-flex align-items-center gap-2">
-            <span className="dd-icon-tile dd-tile-rose" style={{ width: 40, height: 40 }}>
-              <Icon name={p.icon} size={20} />
+            <span className="dd-icon-tile dd-tile-amber" style={{ width: 40, height: 40 }}>
+              <Icon name="FileText" size={20} />
             </span>
-            <strong style={{ fontSize: 16 }}>{p.name}</strong>
+            <strong style={{ fontSize: 16, lineHeight: 1.35 }}>{policy.name}</strong>
           </div>
           <p className="mt-2 mb-0" style={{ fontSize: 13, color: "var(--dd-stone-600)", lineHeight: 1.6 }}>
-            {p.summary}
+            {displayValue(policy.summary?.condition)}
           </p>
-          <div className="mt-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: "var(--dd-coral)" }}>
+          <div className="mt-2 d-flex align-items-center gap-2" style={{ fontSize: 13, color: "var(--dd-amber)" }}>
             <Icon name="Wallet" size={14} />
-            <span className="fw-semibold">{p.amount}</span>
+            <span className="fw-semibold">{displayValue(policy.summary?.benefit)}</span>
           </div>
         </>
       ) : (
-        <p className="dd-subtle mb-0">정책을 선택해 주세요.</p>
+        <div className="d-flex align-items-center gap-2" style={{ minHeight: 90 }}>
+          <Icon name="MousePointerClick" size={18} style={{ color: "var(--dd-stone-400)" }} />
+          <p className="dd-subtle mb-0">비교할 정책을 선택해 주세요.</p>
+        </div>
       )}
     </div>
   );
 }
 
-export default function PolicyCompare({ initialA = "parent-allowance", initialB = "child-allowance" }) {
-  const [aId, setAId] = useState(initialA);
-  const [bId, setBId] = useState(initialB);
+export default function PolicyCompare({
+  initialA = "",
+  initialB = "",
+}) {
+  const [aId, setAId] = useState(toApiSlug(initialA));
+  const [bId, setBId] = useState(toApiSlug(initialB));
+  const [compareResult, setCompareResult] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const a = getPolicy(aId);
-  const b = getPolicy(bId);
+  useEffect(() => {
+    if (!aId || !bId) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadCompareResult() {
+      setLoading(true);
+      setErrorMessage("");
+
+      try {
+        const result = await compareApi.comparePolicies({
+          policyA: aId,
+          policyB: bId,
+          signal: controller.signal,
+        });
+        setCompareResult(result);
+      } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
+        setCompareResult(null);
+        setErrorMessage(
+          getApiErrorMessage(error, DEFAULT_COMPARE_ERROR_MESSAGE)
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setLoading(false);
+        }
+      }
+    }
+
+    loadCompareResult();
+
+    return () => controller.abort();
+  }, [aId, bId]);
+
+  const policyA = compareResult?.policy_a || null;
+  const policyB = compareResult?.policy_b || null;
+  const relatedPolicies = compareResult?.related_policies || [];
+  const extraOptions = useMemo(
+    () =>
+      [
+        toStaticSelectOption(aId),
+        toStaticSelectOption(bId),
+        toSelectOption(policyA),
+        toSelectOption(policyB),
+      ].filter(Boolean),
+    [aId, bId, policyA, policyB]
+  );
 
   return (
     <div className="d-flex flex-column gap-4">
-      {/* 선택 */}
-      <div className="row g-3">
-        <div className="col-12 col-sm-6">
-          <PolicySelect label="정책 A" value={aId} onChange={setAId} exclude={[bId]} />
-        </div>
-        <div className="col-12 col-sm-6">
-          <PolicySelect label="정책 B" value={bId} onChange={setBId} exclude={[aId]} />
+      <div className="dd-card" style={{ padding: 18 }}>
+        <SectionTitle
+          icon="SlidersHorizontal"
+          title="비교할 정책 선택"
+          desc="정책 목록에서 넘어온 slug를 그대로 유지해 비교합니다."
+        />
+        <div className="row g-3 align-items-end">
+          <div className="col-12 col-lg-5">
+            <PolicySelect
+              label="정책 A"
+              value={aId}
+              onChange={(value) => setAId(toApiSlug(value))}
+              exclude={[bId]}
+              extraOptions={extraOptions}
+            />
+          </div>
+          <div className="col-12 col-lg-2 d-none d-lg-flex justify-content-center pb-1">
+            <span className="dd-icon-tile dd-tile-amber" style={{ width: 38, height: 38 }}>
+              <Icon name="ArrowLeftRight" size={18} />
+            </span>
+          </div>
+          <div className="col-12 col-lg-5">
+            <PolicySelect
+              label="정책 B"
+              value={bId}
+              onChange={(value) => setBId(toApiSlug(value))}
+              exclude={[aId]}
+              extraOptions={extraOptions}
+            />
+          </div>
         </div>
       </div>
 
-      {/* 요약 카드 */}
-      <div className="row g-3">
-        <div className="col-12 col-sm-6">
-          <SummaryCard p={a} slot="A" />
-        </div>
-        <div className="col-12 col-sm-6">
-          <SummaryCard p={b} slot="B" />
-        </div>
-      </div>
-
-      {/* 비교표 */}
-      {a && b && (
-        <div className="dd-card" style={{ overflow: "hidden" }}>
-          <table className="dd-table">
-            <thead>
-              <tr>
-                <th style={{ width: "22%" }}>항목</th>
-                <th style={{ width: "39%", background: "#fff", color: "var(--dd-ink)" }}>{a.name}</th>
-                <th style={{ width: "39%", background: "#fff", color: "var(--dd-ink)" }}>{b.name}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {ROWS.map((row) => (
-                <tr key={row.key}>
-                  <th>{row.label}</th>
-                  <td style={{ color: "var(--dd-stone-600)" }}>{a.detail[row.key]}</td>
-                  <td style={{ color: "var(--dd-stone-600)" }}>{b.detail[row.key]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+      {loading && (
+        <div className="dd-card d-flex align-items-center gap-3" style={{ padding: 18 }}>
+          <span className="spinner-border spinner-border-sm" aria-hidden="true" />
+          <span className="dd-subtle" style={{ fontSize: 14 }}>
+            두 정책의 차이점을 불러오는 중이에요.
+          </span>
         </div>
       )}
 
-      {/* 핵심 차이 + 선택 가이드 */}
-      {a && b && (
-        <div className="row g-3">
-          <div className="col-12 col-md-6">
-            <div className="dd-card-soft h-100" style={{ padding: 18 }}>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <Icon name="GitCompare" size={16} style={{ color: "var(--dd-amber)" }} />
-                <strong style={{ fontSize: 15 }}>핵심 차이</strong>
-              </div>
-              <ul className="mb-0 ps-3" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
-                <li><b>{a.name}</b>는 {a.tag} 성격이고, <b>{b.name}</b>는 {b.tag} 성격이에요.</li>
-                <li>지원 규모: {a.name} {a.amount} / {b.name} {b.amount}</li>
-                <li>두 정책은 함께 받을 수 있는 경우가 많아요(중복 조건 확인 필요).</li>
-              </ul>
-            </div>
+      {errorMessage && (
+        <div className="dd-card-soft" style={{ padding: 18, borderColor: "var(--dd-amber-200)" }}>
+          <div className="d-flex align-items-center gap-2 mb-2" style={{ color: "var(--dd-amber)" }}>
+            <Icon name="CircleAlert" size={17} />
+            <strong style={{ fontSize: 15 }}>비교 결과를 불러오지 못했어요</strong>
           </div>
-          <div className="col-12 col-md-6">
-            <div className="dd-card-soft h-100" style={{ padding: 18 }}>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <Icon name="Target" size={16} style={{ color: "var(--dd-coral)" }} />
-                <strong style={{ fontSize: 15 }}>상황별 선택 가이드</strong>
-              </div>
-              <ul className="mb-0 ps-3" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
-                <li>당장 현금 지원이 급하면 → <b>{a.amount.includes("월") ? a.name : b.name}</b></li>
-                <li>조건만 맞으면 둘 다 신청해 함께 받는 걸 권장해요.</li>
-                <li>헷갈리면 챗봇에게 우리 가족 상황을 물어보세요.</li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* 함께 확인하면 좋은 정책 */}
-      {a && (
-        <div>
-          <p className="mb-2 fw-semibold" style={{ fontSize: 14, color: "var(--dd-stone-600)" }}>
-            함께 확인하면 좋은 정책
+          <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>
+            {errorMessage}
           </p>
-          <div className="d-flex flex-wrap gap-2">
-            {getRelated(a.id)
-              .filter((r) => r.id !== bId)
-              .map((r) => (
-                <Link key={r.id} href={`/policies/${r.id}`} className="dd-btn dd-btn-ghost dd-btn-sm">
-                  <Icon name={r.icon} size={15} />
-                  {r.name}
-                </Link>
+        </div>
+      )}
+
+      {!errorMessage && (
+        <div className="row g-3">
+          <div className="col-12 col-sm-6">
+            <SummaryCard policy={policyA} slot="A" />
+          </div>
+          <div className="col-12 col-sm-6">
+            <SummaryCard policy={policyB} slot="B" />
+          </div>
+        </div>
+      )}
+
+      {!errorMessage && policyA && policyB && (
+        <div className="dd-card" style={{ padding: 18 }}>
+          <div>
+            <SectionTitle
+              icon="TableProperties"
+              title="항목별 비교"
+              desc="지원 대상, 신청 방법, 제출 서류를 같은 기준으로 확인합니다."
+            />
+          </div>
+          <div className="d-flex align-items-center gap-2 flex-wrap mb-1">
+            <span className="dd-pill dd-pill-stone">A · {policyA.name}</span>
+            <span className="dd-pill dd-pill-stone">B · {policyB.name}</span>
+          </div>
+          <div style={{ overflowX: "auto" }}>
+            <div style={{ minWidth: 720 }}>
+              {(compareResult?.diff_table || []).map((row) => (
+                <CompareRowCard key={row.field} row={row} />
               ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!errorMessage && compareResult?.selection_guide && (
+        <div className="dd-card" style={{ padding: 18 }}>
+          <div className="d-flex align-items-start gap-3">
+            <span className="dd-icon-tile dd-tile-amber" style={{ width: 42, height: 42, flex: "none" }}>
+              <Icon name="Target" size={19} />
+            </span>
+            <div>
+              <div className="d-flex align-items-center gap-2 mb-1">
+                <strong style={{ fontSize: 15 }}>상황별 선택 가이드</strong>
+                <span className="dd-pill dd-pill-amber">추천 기준</span>
+              </div>
+              <p className="mb-0" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.75 }}>
+                {compareResult.selection_guide}
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!errorMessage && relatedPolicies.length > 0 && (
+        <div className="dd-card-soft" style={{ padding: 18 }}>
+          <SectionTitle
+            icon="Sparkles"
+            title="함께 확인하면 좋은 정책"
+            desc="비교한 정책과 조건이나 분야가 가까운 정책입니다."
+          />
+          <div className="row g-2">
+            {relatedPolicies.map((policy) => (
+              <div className="col-12 col-md-4" key={policy.slug || policy.policy_id}>
+                <Link
+                  href={`/policies/${policy.slug}`}
+                  className="dd-card dd-card-hover text-decoration-none d-flex align-items-center gap-2 h-100"
+                  style={{ padding: 12, color: "var(--dd-ink)" }}
+                >
+                  <span className="dd-icon-tile dd-tile-amber" style={{ width: 34, height: 34, borderRadius: 12, flex: "none" }}>
+                    <Icon name="FileText" size={15} />
+                  </span>
+                  <span className="fw-semibold" style={{ fontSize: 13, lineHeight: 1.4 }}>
+                    {policy.name}
+                  </span>
+                </Link>
+              </div>
+            ))}
           </div>
         </div>
       )}
