@@ -31,7 +31,6 @@ export default function ApplyPrep({ policyId, onAction }) {
 
   const infoRows = [
     { icon: "ClipboardCheck", label: "신청방법", value: policy.detail.method },
-    { icon: "CalendarDays", label: "신청기간", value: policy.detail.periodText },
     { icon: "Phone", label: "문의처", value: policy.contact },
   ];
 

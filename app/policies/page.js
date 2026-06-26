@@ -53,14 +53,6 @@ const CATEGORY_ICONS = {
 
 const TONES = ["coral", "green", "blue", "amber"];
 
-const STATUS_LABELS = {
-  AVAILABLE: "신청 가능",
-  ONLINE_AVAILABLE: "온라인 신청 가능",
-  OFFLINE_ONLY: "방문 신청",
-  CLOSED: "신청 마감",
-  UNKNOWN: "상세 확인 필요",
-};
-
 function getPolicySlug(item) {
   return item.slug || item.policy_slug || item.policy_id;
 }
@@ -108,11 +100,6 @@ function toPolicyCard(item) {
       item.benefit_summary ||
       "정책 상세 내용은 공식 안내에서 확인할 수 있어요.",
     amount: item.benefit_type || "지원 유형 확인 필요",
-    period:
-      item.application_period_text ||
-      STATUS_LABELS[item.application_status] ||
-      item.application_status ||
-      "신청 기간 상세 확인",
   };
 }
 
