@@ -139,13 +139,15 @@ function DelBtn({ onClick, style, disabled = false }) {
 }
 
 function toFavoritePolicyCard(item) {
+  const policySlug = item.policy_slug || item.slug || item.policy_id;
+  const policyName = item.policy_name || item.name || "정책명 확인 필요";
   const savedDate = item.saved_at
     ? new Intl.DateTimeFormat("ko-KR").format(new Date(item.saved_at))
     : "저장일 정보 없음";
 
   return {
-    id: item.policy_slug,
-    name: item.policy_name,
+    id: policySlug,
+    name: policyName,
     icon: "Heart",
     tag: item.category || "복지 정책",
     tagTone: "coral",
