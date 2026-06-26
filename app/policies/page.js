@@ -28,32 +28,11 @@ const CATEGORIES = [
   "고용",
 ];
 
-const REGIONS = [
-  { value: "", label: "전체 지역" },
-  { value: "national", label: "전국" },
-  { value: "seoul", label: "서울" },
-  { value: "gyeonggi", label: "경기" },
-  { value: "incheon", label: "인천" },
-  { value: "busan", label: "부산" },
-  { value: "daegu", label: "대구" },
-  { value: "gwangju", label: "광주" },
-  { value: "daejeon", label: "대전" },
-  { value: "ulsan", label: "울산" },
-  { value: "sejong", label: "세종" },
-  { value: "gangwon", label: "강원" },
-  { value: "chungbuk", label: "충북" },
-  { value: "chungnam", label: "충남" },
-  { value: "jeonbuk", label: "전북" },
-  { value: "jeonnam", label: "전남" },
-  { value: "gyeongbuk", label: "경북" },
-  { value: "gyeongnam", label: "경남" },
-  { value: "jeju", label: "제주" },
-];
-
 const SORTS = [
   { value: "updated_at", label: "최근 갱신순" },
   { value: "name", label: "이름순" },
   { value: "category", label: "분야순" },
+  { value: "relevance", label: "관련도순" },
 ];
 
 const STAGES = [
@@ -74,6 +53,43 @@ const CATEGORY_ICONS = {
 
 const TONES = ["coral", "green", "blue", "amber"];
 
+const STATUS_LABELS = {
+  AVAILABLE: "신청 가능",
+  ONLINE_AVAILABLE: "온라인 신청 가능",
+  OFFLINE_ONLY: "방문 신청",
+  CLOSED: "신청 마감",
+  UNKNOWN: "상세 확인 필요",
+};
+
+function getPolicySlug(item) {
+  return item.slug || item.policy_slug || item.policy_id;
+}
+
+function getPoliciesData(response) {
+  const data = response?.data ?? response;
+  if (Array.isArray(data)) {
+    return data;
+  }
+  return data?.items || [];
+}
+
+function getPoliciesMeta(response, fallback) {
+  const pagination = response?.data?.pagination;
+  return response?.meta || pagination || fallback;
+}
+
+function getVisiblePageNumbers(currentPage, totalPages, maxVisible = 5) {
+  if (totalPages <= maxVisible) {
+    return Array.from({ length: totalPages }, (_, index) => index + 1);
+  }
+
+  const half = Math.floor(maxVisible / 2);
+  const maxStart = totalPages - maxVisible + 1;
+  const start = Math.min(Math.max(currentPage - half, 1), maxStart);
+
+  return Array.from({ length: maxVisible }, (_, index) => start + index);
+}
+
 function toPolicyCard(item) {
   const tag = item.tags?.[0] || item.category || "복지정책";
   const toneIndex = [...tag].reduce(
@@ -83,7 +99,7 @@ function toPolicyCard(item) {
 
   return {
     ...item,
-    id: item.slug,
+    id: getPolicySlug(item),
     icon: CATEGORY_ICONS[item.category] || "Sparkles",
     tag,
     tagTone: TONES[toneIndex % TONES.length],
@@ -94,9 +110,9 @@ function toPolicyCard(item) {
     amount: item.benefit_type || "지원 유형 확인 필요",
     period:
       item.application_period_text ||
-      (item.application_status === "ONLINE_AVAILABLE"
-        ? "온라인 신청 가능"
-        : "신청 기간 상세 확인"),
+      STATUS_LABELS[item.application_status] ||
+      item.application_status ||
+      "신청 기간 상세 확인",
   };
 }
 
@@ -125,8 +141,8 @@ export default function PoliciesPage() {
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [category, setCategory] = useState("");
-  const [tagInput, setTagInput] = useState("");
-  const [regionCode, setRegionCode] = useState("");
+  const [filterKeyword, setFilterKeyword] = useState("");
+  const [debouncedFilterKeyword, setDebouncedFilterKeyword] = useState("");
   const [stage, setStage] = useState("");
   const [sort, setSort] = useState("updated_at");
   const [showFilters, setShowFilters] = useState(false);
@@ -149,12 +165,6 @@ export default function PoliciesPage() {
     error: favoriteError,
   } = useLiked();
 
-  const tags = useMemo(
-    () =>
-      [...new Set(tagInput.split(",").map((tag) => tag.trim()).filter(Boolean))],
-    [tagInput]
-  );
-
   useEffect(() => {
     const timer = window.setTimeout(() => {
       setDebouncedQuery(query.trim());
@@ -164,6 +174,29 @@ export default function PoliciesPage() {
   }, [query]);
 
   useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedFilterKeyword(
+        filterKeyword
+          .split(",")
+          .map((keyword) => keyword.trim())
+          .filter(Boolean)
+          .join(" ")
+      );
+      setPage(1);
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [filterKeyword]);
+
+  const searchQuery = useMemo(
+    () =>
+      [debouncedQuery, debouncedFilterKeyword]
+        .map((keyword) => keyword.trim())
+        .filter(Boolean)
+        .join(" "),
+    [debouncedQuery, debouncedFilterKeyword]
+  );
+
+  useEffect(() => {
     const controller = new AbortController();
 
     async function loadPolicies() {
@@ -171,24 +204,22 @@ export default function PoliciesPage() {
       setError("");
       try {
         const response = await policyApi.getPolicies({
-          query: debouncedQuery,
+          query: searchQuery,
           category,
-          tags,
-          regionCode,
           stage,
           sort,
           page,
           size: PAGE_SIZE,
           signal: controller.signal,
         });
-        setItems(response.data || []);
+        setItems(getPoliciesData(response));
         setMeta(
-          response.meta || {
+          getPoliciesMeta(response, {
             page,
             size: PAGE_SIZE,
             total: 0,
             total_pages: 0,
-          }
+          })
         );
       } catch (requestError) {
         if (
@@ -208,10 +239,8 @@ export default function PoliciesPage() {
     loadPolicies();
     return () => controller.abort();
   }, [
-    debouncedQuery,
+    searchQuery,
     category,
-    tags,
-    regionCode,
     stage,
     sort,
     page,
@@ -219,6 +248,15 @@ export default function PoliciesPage() {
   ]);
 
   const policies = useMemo(() => items.map(toPolicyCard), [items]);
+  const totalPages = Number(meta.total_pages || meta.totalPages || 0);
+  const currentPage = Math.min(
+    Math.max(Number(meta.page || page || 1), 1),
+    totalPages || 1
+  );
+  const visiblePageNumbers = useMemo(
+    () => getVisiblePageNumbers(currentPage, totalPages),
+    [currentPage, totalPages]
+  );
 
   const updateFilter = (setter) => (value) => {
     setter(value);
@@ -234,11 +272,18 @@ export default function PoliciesPage() {
     setQuery("");
     setDebouncedQuery("");
     setCategory("");
-    setTagInput("");
-    setRegionCode("");
+    setFilterKeyword("");
+    setDebouncedFilterKeyword("");
     setStage("");
     setSort("updated_at");
     setPage(1);
+  };
+
+  const goToPage = (nextPage) => {
+    const normalizedPage = Math.min(Math.max(nextPage, 1), totalPages || 1);
+    if (normalizedPage !== page) {
+      setPage(normalizedPage);
+    }
   };
 
   const toggleBasket = (policy) => {
@@ -340,37 +385,21 @@ export default function PoliciesPage() {
         {showFilters && (
           <div className="dd-card mt-3" style={{ padding: 20 }}>
             <div className="row g-3">
-              <label className="col-12 col-lg-4">
-                <span className="dd-label">태그</span>
+              <label className="col-12 col-lg-6">
+                <span className="dd-label">키워드</span>
                 <input
                   className="dd-input"
-                  value={tagInput}
-                  placeholder="예: 청년, 임신·출산"
+                  value={filterKeyword}
+                  placeholder="예: 출산, 청년, 임신·출산"
                   onChange={(event) =>
-                    updateFilter(setTagInput)(event.target.value)
+                    updateFilter(setFilterKeyword)(event.target.value)
                   }
                 />
                 <span className="dd-subtle" style={{ fontSize: 12 }}>
-                  여러 태그는 쉼표로 구분하며 모두 일치하는 정책을 찾습니다.
+                  정책명, 분야, 태그, 조건 원문과 상세 설명에서 함께 찾습니다.
                 </span>
               </label>
-              <label className="col-12 col-md-6 col-lg-4">
-                <span className="dd-label">지역</span>
-                <select
-                  className="dd-select"
-                  value={regionCode}
-                  onChange={(event) =>
-                    updateFilter(setRegionCode)(event.target.value)
-                  }
-                >
-                  {REGIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="col-12 col-md-6 col-lg-4">
+              <label className="col-12 col-lg-6">
                 <span className="dd-label">대상</span>
                 <select
                   className="dd-select"
@@ -488,24 +517,43 @@ export default function PoliciesPage() {
               )}
             </div>
 
-            {meta.total_pages > 1 && (
-              <div className="d-flex justify-content-center align-items-center gap-3 mt-4">
+            {totalPages > 1 && (
+              <div className="d-flex justify-content-center align-items-center gap-2 mt-4 flex-wrap">
                 <button
                   type="button"
                   className="dd-btn dd-btn-ghost dd-btn-sm"
-                  disabled={page <= 1}
-                  onClick={() => setPage((current) => current - 1)}
+                  disabled={currentPage <= 1}
+                  onClick={() => goToPage(currentPage - 1)}
                 >
                   이전
                 </button>
-                <strong style={{ fontSize: 14 }}>
-                  {page} / {meta.total_pages}
-                </strong>
+                {visiblePageNumbers.map((pageNumber) => {
+                  const isCurrent = pageNumber === currentPage;
+                  return (
+                    <button
+                      key={pageNumber}
+                      type="button"
+                      className={
+                        "dd-btn dd-btn-sm " +
+                        (isCurrent ? "dd-btn-coral" : "dd-btn-ghost")
+                      }
+                      onClick={() => goToPage(pageNumber)}
+                      aria-current={isCurrent ? "page" : undefined}
+                      aria-label={`${pageNumber}페이지로 이동`}
+                      style={{
+                        minWidth: 38,
+                        justifyContent: "center",
+                      }}
+                    >
+                      {pageNumber}
+                    </button>
+                  );
+                })}
                 <button
                   type="button"
                   className="dd-btn dd-btn-ghost dd-btn-sm"
-                  disabled={page >= meta.total_pages}
-                  onClick={() => setPage((current) => current + 1)}
+                  disabled={currentPage >= totalPages}
+                  onClick={() => goToPage(currentPage + 1)}
                 >
                   다음
                 </button>

@@ -17,6 +17,29 @@ import { getApiErrorMessage } from "@/apis/axiosConfig";
 const FAVORITES_CHANGED_EVENT = "dodam:favorites-changed";
 const PAGE_SIZE = 100;
 
+const getFavoriteSlug = (item) =>
+  item?.policy_slug || item?.slug || item?.policy_id || "";
+
+const normalizeFavorite = (item, fallbackSlug = "") => ({
+  ...item,
+  policy_slug: getFavoriteSlug(item) || fallbackSlug,
+});
+
+const getFavoriteItems = (response) => {
+  const data = response?.data ?? response;
+  if (Array.isArray(data)) {
+    return data.map((item) => normalizeFavorite(item));
+  }
+  return (data?.items || []).map((item) => normalizeFavorite(item));
+};
+
+const getTotalPages = (response) =>
+  response?.meta?.total_pages ||
+  response?.meta?.totalPages ||
+  response?.data?.pagination?.total_pages ||
+  response?.data?.pagination?.totalPages ||
+  1;
+
 const notifyFavoritesChanged = () => {
   if (typeof window !== "undefined") {
     window.dispatchEvent(new Event(FAVORITES_CHANGED_EVENT));
@@ -57,8 +80,8 @@ export function useLiked() {
           size: PAGE_SIZE,
           signal,
         });
-        const firstItems = firstResponse.data?.items || [];
-        const totalPages = firstResponse.meta?.total_pages || 1;
+        const firstItems = getFavoriteItems(firstResponse);
+        const totalPages = getTotalPages(firstResponse);
         let nextItems = firstItems;
 
         if (totalPages > 1) {
@@ -74,7 +97,7 @@ export function useLiked() {
           nextItems = [
             ...firstItems,
             ...remainingResponses.flatMap(
-              (response) => response.data?.items || []
+              (response) => getFavoriteItems(response)
             ),
           ];
         }
@@ -116,7 +139,7 @@ export function useLiked() {
   }, [load]);
 
   const ids = useMemo(
-    () => items.map((item) => item.policy_slug),
+    () => items.map((item) => getFavoriteSlug(item)).filter(Boolean),
     [items]
   );
 
@@ -155,8 +178,8 @@ export function useLiked() {
       setError("");
       setItems((current) =>
         currentlyLiked
-          ? current.filter((item) => item.policy_slug !== policySlug)
-          : [{ policy_slug: policySlug }, ...current]
+          ? current.filter((item) => getFavoriteSlug(item) !== policySlug)
+          : [normalizeFavorite({}, policySlug), ...current]
       );
 
       try {
@@ -165,8 +188,8 @@ export function useLiked() {
         } else {
           const created = await favoriteApi.addFavorite(policySlug);
           setItems((current) => [
-            created,
-            ...current.filter((item) => item.policy_slug !== policySlug),
+            normalizeFavorite(created, policySlug),
+            ...current.filter((item) => getFavoriteSlug(item) !== policySlug),
           ]);
         }
         notifyFavoritesChanged();
@@ -177,7 +200,7 @@ export function useLiked() {
         }
         if (currentlyLiked && requestError.status === 404) {
           setItems((current) =>
-            current.filter((item) => item.policy_slug !== policySlug)
+            current.filter((item) => getFavoriteSlug(item) !== policySlug)
           );
           notifyFavoritesChanged();
           return;
