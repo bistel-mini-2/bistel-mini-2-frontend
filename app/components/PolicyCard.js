@@ -78,10 +78,6 @@ export default function PolicyCard({
             <Icon name="Wallet" size={14} style={{ color: "var(--dd-coral)" }} />
             <span>{policy.amount}</span>
           </div>
-          <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-stone-600)" }}>
-            <Icon name="CalendarDays" size={14} style={{ color: "var(--dd-coral)" }} />
-            <span>{policy.period}</span>
-          </div>
         </div>
       )}
 
