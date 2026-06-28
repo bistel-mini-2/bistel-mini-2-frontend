@@ -41,19 +41,107 @@ const VIEW_TO_REQUEST_STATUS = {
   error: "FAILED",
 };
 
+// 백엔드 candidate_status를 그대로 사용해 카드 상태 배지를 표시한다.
+// 프론트에서 지원 가능성을 재판정하지 않고 응답 값만 매핑한다.
+const CANDIDATE_STATUS_META = {
+  CANDIDATE: { label: "잘 맞는 정책", pill: "dd-pill-green", icon: "CircleCheck" },
+  UNCERTAIN: { label: "확인해 볼 정책", pill: "dd-pill-amber", icon: "CircleAlert" },
+  EXCLUDED: { label: "조건 확인 필요", pill: "dd-pill-coral", icon: "X" },
+};
+
+// "잘 맞는 점"은 장황한 사유 문장 대신 짧은 매칭 조건 라벨(생애주기·자녀 나이 등)만
+// 칩으로 노출한다. 너무 길어지지 않게 최대 개수만 보여주고 나머지는 "외 n개"로 축약한다.
+const MATCHED_LABEL_LIMIT = 4;
+
+const normalizeCandidateStatus = (status) => {
+  const value = String(status || "").trim().toUpperCase();
+  return CANDIDATE_STATUS_META[value] ? value : "";
+};
+
+// 백엔드에서 드물게 내부 토큰(대문자 SNAKE_CASE 규칙 코드 등)이 문장에 섞여
+// 내려올 수 있어, 사용자 카드에는 일반 문장으로 치환하는 안전장치를 둔다.
+// 예: "REFUGEE_APPLICATION_PENDING_EXCLUDED",
+//     "FOSTERCAREPARTICIPATIONNOTMODELED"(언더스코어 없이 길게 이어진 대문자) →
+//     "자동으로 확인하기 어려운 세부 자격이 있어요".
+const INTERNAL_TOKEN_PATTERN =
+  /\b(?:[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)+|[A-Z][A-Z0-9]{11,})\b/g;
+const INTERNAL_TOKEN_FALLBACK = "자동으로 확인하기 어려운 세부 자격이 있어요";
+
+// 사유 칩 등 짧은 문구에서 통째로 걸러낼 내부 신호 패턴(DB/RAG·검색 단계·규칙 코드 등).
+const INTERNAL_JARGON_PATTERNS = [
+  /\bDB\b/i,
+  /\bRAG\b/i,
+  /후보\s*검색/,
+  /검색\s*단계/,
+  /policy[_\s]?rule/i,
+  /hard[_\s]?rule/i,
+];
+
+// 한글이 없고 영문 대문자/숫자/구분기호로만 이뤄진 값은 내부 토큰으로 본다.
+// (예: "FOSTERCAREPARTICIPATIONNOTMODELED" — 언더스코어가 없어도 잡는다.)
+const looksLikeInternalToken = (text) =>
+  !/[가-힣]/.test(text) && /[A-Z]/.test(text) && /^[A-Z0-9_./\s-]+$/.test(text);
+
+const sanitizeDisplayText = (text) => {
+  const value = typeof text === "string" ? text.trim() : "";
+  if (!value) {
+    return value;
+  }
+
+  return value
+    .replace(INTERNAL_TOKEN_PATTERN, INTERNAL_TOKEN_FALLBACK)
+    .replace(/\s+/g, " ")
+    .trim();
+};
+
+// 사유 칩 전용: 내부 신호/토큰이면 generic 문구로 치환하지 않고 통째로 버린다.
+// (치환하면 "자동으로 확인하기 어려운 세부 자격이 있어요"가 반복 노출되는 문제가 생긴다.)
+const sanitizeReason = (reason) => {
+  const value = typeof reason === "string" ? reason.trim() : "";
+  if (!value) {
+    return "";
+  }
+
+  if (looksLikeInternalToken(value)) {
+    return "";
+  }
+
+  if (INTERNAL_JARGON_PATTERNS.some((pattern) => pattern.test(value))) {
+    return "";
+  }
+
+  // 문장 중간에 SNAKE_CASE 토큰만 섞인 경우는 일반 표현으로 치환해 살린다.
+  return sanitizeDisplayText(value);
+};
+
+// "잘 맞는 점" 칩: 백엔드가 정리한 매칭 조건 라벨(reasons.matched_labels)을 사용한다.
+// 내부 신호/지역은 백엔드에서 이미 제외되며, 프론트에서는 안전망으로 한 번 더 정제한다.
+const normalizeMatchedLabels = (reasons) => {
+  if (!reasons || typeof reasons !== "object") {
+    return [];
+  }
+
+  const rawLabels = Array.isArray(reasons.matched_labels)
+    ? reasons.matched_labels
+    : Array.isArray(reasons.matchedLabels)
+      ? reasons.matchedLabels
+      : [];
+
+  const labels = [];
+  rawLabels.forEach((label) => {
+    const value = sanitizeReason(label);
+    if (value && !labels.includes(value)) {
+      labels.push(value);
+    }
+  });
+  return labels;
+};
+
 const firstText = (...values) =>
   values.find((value) => typeof value === "string" && value.trim())?.trim();
 
 const firstValue = (...values) =>
   values.find((value) => value !== null && value !== undefined && value !== "");
-
-const truncateText = (text, maxLength = 110) => {
-  if (!text || text.length <= maxLength) {
-    return text;
-  }
-
-  return text.slice(0, maxLength).trimEnd() + "...";
-};
 
 const lineClampStyle = (lineCount) => ({
   display: "-webkit-box",
@@ -71,50 +159,6 @@ const normalizeMatchScore = (score) => {
 
   const percent = value <= 1 ? value * 100 : value;
   return Math.max(0, Math.min(100, Math.round(percent)));
-};
-
-const getEvidenceText = (evidence) => {
-  if (typeof evidence === "string") {
-    return truncateText(evidence.trim());
-  }
-
-  if (!evidence || typeof evidence !== "object") {
-    return "";
-  }
-
-  const text = firstText(
-    evidence.snippet,
-    evidence.content,
-    evidence.text,
-    evidence.quote,
-    evidence.reason,
-    evidence.summary
-  );
-  const source = firstText(
-    evidence.source_title,
-    evidence.sourceTitle,
-    evidence.title,
-    evidence.source
-  );
-
-  return truncateText([text, source ? `출처: ${source}` : ""].filter(Boolean).join(" · "));
-};
-
-const normalizeEvidence = (recommendation) => {
-  // raw_evidences는 원문/debug 성격이라 카드에 노출하지 않는다.
-  // 표시는 정제된 evidences > evidence 순서만 사용한다.
-  const rawEvidence = firstValue(
-    recommendation?.evidences,
-    recommendation?.evidence,
-    recommendation?.evidence_list,
-    recommendation?.evidenceList
-  );
-  const evidenceItems = Array.isArray(rawEvidence) ? rawEvidence : [rawEvidence];
-
-  return evidenceItems
-    .map(getEvidenceText)
-    .filter(Boolean)
-    .slice(0, 2);
 };
 
 const getPolicyIdentifier = (recommendation) =>
@@ -151,27 +195,33 @@ const mapRecommendationToPolicyCardProps = (recommendation, index) => {
     recommendation?.easy_summary,
     recommendation?.easySummary
   );
-  // 추천 이유(카드 본문): why_recommended를 최우선으로 사용한다.
+  // 추천 이유(카드 본문): "사용자 조건과 정책이 왜 맞는지"를 자연어로 설명하는
+  // LLM rerank의 why_recommended를 최우선으로 쓴다. 없으면 reason_summary >
+  // recommendation_reason > reason 순으로 대체한다.
   // 상세 지원대상/지원내용 같은 긴 본문은 카드에 싣지 않고 '자세히 보기'로 유도한다.
   // summary와 중복 노출되지 않도록 reason fallback에는 summary를 넣지 않는다.
   const reason =
-    firstText(
-      recommendation?.why_recommended,
-      recommendation?.whyRecommended,
-      recommendation?.recommendation_reason,
-      recommendation?.recommendationReason,
-      recommendation?.reason_summary,
-      recommendation?.reasonSummary,
-      recommendation?.reason
+    sanitizeDisplayText(
+      firstText(
+        recommendation?.why_recommended,
+        recommendation?.whyRecommended,
+        recommendation?.reason_summary,
+        recommendation?.reasonSummary,
+        recommendation?.recommendation_reason,
+        recommendation?.recommendationReason,
+        recommendation?.reason
+      )
     ) || "입력하신 조건과 관련성이 높은 정책이에요.";
-  // 신청 전 확인사항(보조 1줄): 값이 없으면 빈 문자열로 두어 카드에서 해당 줄을 숨긴다.
-  // 모든 카드에 동일한 고정 fallback 문구가 반복되지 않도록 fallback을 두지 않는다.
+  // 확인하면 좋은 점(AI 코멘트의 보조 줄): 값이 없으면 빈 문자열로 두어 줄을 숨긴다.
+  // 내부 토큰(예: "FOSTERCAREPARTICIPATIONNOTMODELED")이 새어 들어오면 버린다.
   const checkBeforeApply =
-    firstText(
-      recommendation?.check_before_apply,
-      recommendation?.checkBeforeApply,
-      recommendation?.application_method,
-      recommendation?.applicationMethod
+    sanitizeReason(
+      firstText(
+        recommendation?.check_before_apply,
+        recommendation?.checkBeforeApply,
+        recommendation?.application_method,
+        recommendation?.applicationMethod
+      )
     ) || "";
 
   return {
@@ -191,7 +241,12 @@ const mapRecommendationToPolicyCardProps = (recommendation, index) => {
         recommendation?.match
       )
     ),
-    evidence: normalizeEvidence(recommendation),
+    // 지원 가능성 상태/사유: 백엔드 응답 필드를 그대로 보존해 카드에 노출한다.
+    candidateStatus: normalizeCandidateStatus(
+      recommendation?.candidate_status ?? recommendation?.candidateStatus
+    ),
+    // "잘 맞는 점" 칩: 매칭 조건 라벨만 짧게.
+    matchedLabels: normalizeMatchedLabels(recommendation?.reasons),
     policy: {
       id,
       name:
@@ -202,13 +257,16 @@ const mapRecommendationToPolicyCardProps = (recommendation, index) => {
           recommendation?.name
         ) || "추천 정책",
       icon: "Sparkles",
+      // 분류 태그: 백엔드가 category/benefit_type 등을 줄 때만 노출한다.
+      // 값이 없을 때 모든 카드에 똑같이 "맞춤 추천"이 박히면 정보가 없으므로,
+      // fallback 없이 빈 값으로 두고 카드에서 조건부 렌더링한다.
       tag:
         firstText(
           recommendation?.category,
           recommendation?.benefit_type,
           recommendation?.benefitType,
           recommendation?.region
-        ) || "맞춤 추천",
+        ) || "",
       tagTone: "coral",
       targetDescription,
       benefitDescription,
@@ -355,43 +413,117 @@ function FollowUpQuestions({ questions }) {
   );
 }
 
-function EvidenceList({ evidence }) {
-  // 근거가 없으면 박스 자체를 렌더링하지 않는다(placeholder 문구도 띄우지 않음).
-  if (!evidence.length) {
+function CandidateStatusBadge({ status }) {
+  const meta = CANDIDATE_STATUS_META[status];
+
+  if (!meta) {
     return null;
   }
 
-  const evidenceRows = evidence.slice(0, 2);
+  return (
+    <span className={"dd-pill " + meta.pill}>
+      <Icon name={meta.icon} size={12} />
+      {meta.label}
+    </span>
+  );
+}
+
+function MatchedLabels({ labels }) {
+  // "잘 맞는 점": 매칭된 조건 라벨(생애주기·자녀 나이 등)만 짧은 칩으로 노출한다.
+  if (!labels.length) {
+    return null;
+  }
+
+  const visible = labels.slice(0, MATCHED_LABEL_LIMIT);
+  const restCount = labels.length - visible.length;
 
   return (
-    <div
-      className="w-100 dd-card-soft mt-3"
-      style={{
-        padding: "10px 12px",
-        maxHeight: 116,
-        overflow: "hidden",
-      }}
-    >
-      <div className="d-flex align-items-center gap-2 mb-2">
-        <Icon name="FileText" size={13} style={{ color: "var(--dd-coral)" }} />
-        <strong style={{ fontSize: 12 }}>추천 근거</strong>
-      </div>
-      <ul
-        className="mb-0 ps-3 d-flex flex-column gap-1"
-        style={{ fontSize: 12.5, color: "var(--dd-stone-600)", lineHeight: 1.5 }}
+    <div className="mt-3 d-flex align-items-start gap-2" style={{ fontSize: 12.5 }}>
+      <span
+        className="d-inline-flex align-items-center gap-1 fw-semibold"
+        style={{ color: "var(--dd-green)", flex: "none", marginTop: 3 }}
       >
-        {evidenceRows.map((item) => (
-          <li key={item} style={lineClampStyle(2)}>
-            {item}
-          </li>
+        <Icon name="Check" size={13} />
+        잘 맞는 점
+      </span>
+      <span className="d-flex flex-wrap gap-1">
+        {visible.map((label) => (
+          <span key={label} className="dd-pill dd-pill-green" style={{ padding: "3px 9px" }}>
+            {label}
+          </span>
         ))}
-      </ul>
+        {restCount > 0 && (
+          <span
+            className="d-inline-flex align-items-center"
+            style={{ color: "var(--dd-stone-600)" }}
+          >
+            외 {restCount}개
+          </span>
+        )}
+      </span>
+    </div>
+  );
+}
+
+function CheckTip({ text }) {
+  // "확인하면 좋아요": 확인해 볼 정책에서 무엇을 확인하면 좋은지(check_before_apply).
+  // 잘 맞는 점 칩 바로 아래에, 같은 레이아웃(라벨 + 내용)으로 둔다.
+  if (!text) {
+    return null;
+  }
+
+  return (
+    <div className="mt-2 d-flex align-items-start gap-2" style={{ fontSize: 12.5 }}>
+      <span
+        className="d-inline-flex align-items-center gap-1 fw-semibold"
+        style={{ color: "var(--dd-amber)", flex: "none", marginTop: 3 }}
+      >
+        <Icon name="CircleAlert" size={13} />
+        확인하면 좋아요
+      </span>
+      <span
+        style={{
+          color: "var(--dd-stone-600)",
+          lineHeight: 1.5,
+          ...lineClampStyle(2),
+        }}
+      >
+        {text}
+      </span>
+    </div>
+  );
+}
+
+function AiComment({ comment }) {
+  // 제거한 "근거" 박스 자리를 AI 코멘트로 대체한다.
+  // 사용자 조건과 정책이 왜 맞는지(why_recommended)를 2~3문장으로 보여준다.
+  if (!comment) {
+    return null;
+  }
+
+  return (
+    <div className="dd-card-soft mt-3" style={{ padding: "12px 14px" }}>
+      <div className="d-flex align-items-center gap-2 mb-2">
+        <Icon name="Sparkles" size={14} style={{ color: "var(--dd-coral)" }} />
+        <strong style={{ fontSize: 12.5 }}>AI 코멘트</strong>
+      </div>
+      <p
+        className="mb-0"
+        style={{
+          fontSize: 13.5,
+          color: "var(--dd-stone-700)",
+          lineHeight: 1.6,
+          ...lineClampStyle(5),
+        }}
+      >
+        {comment}
+      </p>
     </div>
   );
 }
 
 function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
-  const { policy, match, evidence, detailHref, rank } = item;
+  const { policy, match, detailHref, rank, candidateStatus, matchedLabels } = item;
   const hasPolicyDetail = policy.id && !policy.id.startsWith("recommendation-");
 
   return (
@@ -431,7 +563,10 @@ function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
             </Link>
           </div>
           <div className="d-flex align-items-center gap-2 mt-2 flex-wrap">
-            <span className={"dd-pill dd-pill-" + policy.tagTone}>{policy.tag}</span>
+            <CandidateStatusBadge status={candidateStatus} />
+            {policy.tag && (
+              <span className={"dd-pill dd-pill-" + policy.tagTone}>{policy.tag}</span>
+            )}
             {match != null && (
               <span className="dd-badge-match">
                 <Icon name="Star" size={12} fill="currentColor" />
@@ -481,56 +616,35 @@ function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
         )
       )}
 
-      {/* 추천 이유 2줄 */}
-      <p
-        className="mt-2 mb-0"
-        style={{
-          fontSize: 14,
-          color: "var(--dd-stone-600)",
-          lineHeight: 1.6,
-          ...lineClampStyle(2),
-        }}
-      >
-        {policy.reason}
-      </p>
+      {/* 잘 맞는 점: 매칭 조건 라벨 칩 (없으면 렌더링 안 함) */}
+      <MatchedLabels labels={matchedLabels} />
 
-      {/* 보조: 신청 전 확인사항 1줄 (값이 없으면 줄 자체를 숨김) */}
-      {policy.checkBeforeApply && (
-        <div
-          className="d-flex align-items-start gap-2 mt-3"
-          style={{ fontSize: 13, color: "var(--dd-stone-600)" }}
-        >
-          <Icon
-            name="CircleAlert"
-            size={14}
-            style={{ color: "var(--dd-coral)", marginTop: 2, flex: "none" }}
-          />
-          <span style={{ lineHeight: 1.5, ...lineClampStyle(1) }}>
-            {policy.checkBeforeApply}
-          </span>
+      {/* 확인하면 좋아요: 잘 맞는 점 바로 아래 (없으면 렌더링 안 함) */}
+      <CheckTip text={policy.checkBeforeApply} />
+
+      {/* AI 코멘트 + 버튼을 한 묶음으로 카드 하단에 고정해 카드마다 위치가 일정하다 */}
+      <div className="d-flex flex-column" style={{ marginTop: "auto" }}>
+        {/* AI 코멘트: 왜 맞는지 2~3문장 */}
+        <AiComment comment={policy.reason} />
+
+        {/* 하단 버튼 */}
+        <div className="d-flex flex-wrap gap-2" style={{ paddingTop: 16 }}>
+          <Link href={detailHref} className="dd-btn dd-btn-ghost dd-btn-sm">
+            <Icon name="FileText" size={15} /> 자세히 보기
+          </Link>
+          {hasPolicyDetail && (
+            <button
+              type="button"
+              className="dd-btn dd-btn-blue dd-btn-sm"
+              onClick={() => onAnalyze?.(policy.id)}
+              disabled={analyzeDisabled}
+              aria-busy={analyzing}
+            >
+              <Icon name={analyzing ? "LoaderCircle" : "ShieldCheck"} size={15} />
+              {analyzing ? "분석 요청 중..." : "지원 가능성 분석"}
+            </button>
+          )}
         </div>
-      )}
-
-      {/* 근거 박스: evidence 1~2개, 각 2줄 (없으면 렌더링 안 함) */}
-      <EvidenceList evidence={evidence} />
-
-      {/* 하단 버튼: 항상 카드 맨 아래 고정 */}
-      <div className="d-flex flex-wrap gap-2" style={{ marginTop: "auto", paddingTop: 16 }}>
-        <Link href={detailHref} className="dd-btn dd-btn-ghost dd-btn-sm">
-          <Icon name="FileText" size={15} /> 자세히 보기
-        </Link>
-        {hasPolicyDetail && (
-          <button
-            type="button"
-            className="dd-btn dd-btn-blue dd-btn-sm"
-            onClick={() => onAnalyze?.(policy.id)}
-            disabled={analyzeDisabled}
-            aria-busy={analyzing}
-          >
-            <Icon name={analyzing ? "LoaderCircle" : "ShieldCheck"} size={15} />
-            {analyzing ? "분석 요청 중..." : "지원 가능성 분석"}
-          </button>
-        )}
       </div>
     </article>
   );
@@ -806,7 +920,7 @@ function RecommendResultContent() {
                   AI가 찾은 맞춤 추천 결과예요
                 </h1>
                 <p className="mt-2 mb-0" style={{ fontSize: 16, color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
-                  {viewState.result?.reasonSummary ||
+                  {sanitizeDisplayText(viewState.result?.reasonSummary) ||
                     "입력하신 가족 상황과 가장 잘 맞는 순서로 정리했어요."}
                 </p>
               </div>
