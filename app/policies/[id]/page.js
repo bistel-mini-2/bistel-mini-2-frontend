@@ -15,7 +15,7 @@ import {
 } from "@/app/types/aiStatus";
 
 const AI_SUMMARY_POLL_INTERVAL_MS = 2500;
-const AI_SUMMARY_MAX_POLLS = 12;
+const AI_SUMMARY_MAX_POLLS = 30;
 const AI_SUMMARY_WAITING_STATUSES = new Set(["READY", "PROCESSING"]);
 
 const TABS = [
@@ -295,6 +295,7 @@ function PolicyAiSummarySection({
   summary,
   fallbackSummary,
   errorMessage,
+  canRetry,
   onRetry,
 }) {
   const statusUi = getRequestStatusUi(status);
@@ -318,7 +319,7 @@ function PolicyAiSummarySection({
         <span className={"dd-pill " + getAiStatusPillClass(statusUi.variant)}>
           <Icon name="Sparkles" size={13} /> AI 쉬운 요약 · {statusUi.label}
         </span>
-        {isFailed && (
+        {isFailed && canRetry && (
           <button
             type="button"
             className="dd-btn dd-btn-ghost dd-btn-sm"
@@ -419,6 +420,7 @@ export default function PolicyDetailPage() {
     status: "READY",
     summary: null,
     errorMessage: "",
+    canRetry: false,
   });
   const {
     has: isLiked,
@@ -482,6 +484,7 @@ export default function PolicyDetailPage() {
         ...current,
         status: current.summary ? current.status : "PROCESSING",
         errorMessage: "",
+        canRetry: false,
       }));
 
       try {
@@ -500,6 +503,7 @@ export default function PolicyDetailPage() {
           status,
           summary: status === "COMPLETED" ? summary : null,
           errorMessage: "",
+          canRetry: false,
         });
 
         if (AI_SUMMARY_WAITING_STATUSES.has(status)) {
@@ -511,6 +515,7 @@ export default function PolicyDetailPage() {
               status: "FAILED",
               summary: null,
               errorMessage: "AI 요약 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.",
+              canRetry: true,
             });
           }
         }
@@ -527,6 +532,7 @@ export default function PolicyDetailPage() {
               requestError,
               "AI 요약을 불러오지 못했어요."
             ),
+            canRetry: true,
           });
         }
       }
@@ -722,6 +728,7 @@ export default function PolicyDetailPage() {
               summary={aiSummaryState.summary}
               fallbackSummary={policy.easySummary}
               errorMessage={aiSummaryState.errorMessage}
+              canRetry={aiSummaryState.canRetry}
               onRetry={() => setSummaryRetryKey((current) => current + 1)}
             />
 
