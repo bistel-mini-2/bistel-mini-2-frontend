@@ -610,7 +610,7 @@ export default function PolicyDetailPage() {
   };
 
   const handleEligibility = () => {
-    router.push(`/eligibility?policyId=${encodeURIComponent(likeSlug)}&source=policy-detail`);
+    router.push(`/policies/${encodeURIComponent(likeSlug)}/eligibility?source=policy-detail`);
   };
 
   if (loading) {

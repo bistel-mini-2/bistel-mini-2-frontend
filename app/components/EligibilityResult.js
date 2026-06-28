@@ -62,6 +62,12 @@ const POLLING_STATUSES = new Set([
   REQUEST_STATUS.PROCESSING,
 ]);
 
+const PENDING_ELIGIBILITY = {
+  summary: "지원 가능성 분석 요청을 준비하고 있어요.",
+  criteria: [],
+  level: "mid",
+};
+
 const EVIDENCE_ROLE_LABELS = {
   SUMMARY: "요약 근거",
   TARGET: "대상 조건",
@@ -357,6 +363,7 @@ export default function EligibilityResult({
   const queryString = searchParams.toString();
   const { isLoading: authLoading, isAuthenticated } = useContext(AuthContext);
   const policy = getPolicy(policyId);
+  const policyIdentifier = policy?.backendSlug || policy?.id || policyId;
   const creationStartedRef = useRef(false);
   const [analyzing, setAnalyzing] = useState(false);
   const [currentFamily, setCurrentFamily] = useState(family);
@@ -394,7 +401,7 @@ export default function EligibilityResult({
     if (activeRequestId || creationStartedRef.current) {
       return;
     }
-    if (!policy) {
+    if (!policyIdentifier) {
       return;
     }
     if (authLoading) {
@@ -422,7 +429,6 @@ export default function EligibilityResult({
           createRecommendationPayload(
             recommendationInput?.family || readStoredFamily()
           );
-        const policyIdentifier = policy.backendSlug || policy.id;
         const response = await eligibilityApi.createRequest({
           policyId: policyIdentifier,
           userConditions,
@@ -448,7 +454,7 @@ export default function EligibilityResult({
 
         setCreatingRequest(false);
         setActiveRequestId(String(nextRequestId));
-        const nextParams = new URLSearchParams(searchParams.toString());
+        const nextParams = new URLSearchParams(queryString);
         nextParams.set("requestId", String(nextRequestId));
         router.replace(`${pathname}?${nextParams.toString()}`);
       } catch (error) {
@@ -480,11 +486,11 @@ export default function EligibilityResult({
     entrySource,
     isAuthenticated,
     pathname,
-    policy,
+    policyIdentifier,
+    queryString,
     redirectToLogin,
     recommendationRequestId,
     router,
-    searchParams,
   ]);
 
   useEffect(() => {
@@ -573,7 +579,7 @@ export default function EligibilityResult({
     setTimeout(() => setAnalyzing(false), 700);
   };
 
-  if (!policy && !activeRequestId && !requestResult) {
+  if (!policyIdentifier && !activeRequestId && !requestResult) {
     return <p className="dd-subtle">정책 정보를 찾을 수 없어요.</p>;
   }
 
@@ -591,7 +597,7 @@ export default function EligibilityResult({
         criteria: normalizeCriteria(requestResult),
         level: normalizeBannerLevel(requestResult?.banner_level, requestStatus),
       }
-    : policy.eligibility;
+    : policy?.eligibility || PENDING_ELIGIBILITY;
 
   const level = ELIGIBILITY_LEVELS[elig.level] || ELIGIBILITY_LEVELS.mid;
   const inputFamily = normalizeInputSummary(requestResult?.input_summary, currentFamily);
