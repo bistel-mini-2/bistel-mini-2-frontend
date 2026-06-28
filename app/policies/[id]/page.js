@@ -9,6 +9,14 @@ import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
+import {
+  getAiStatusPillClass,
+  getRequestStatusUi,
+} from "@/app/types/aiStatus";
+
+const AI_SUMMARY_POLL_INTERVAL_MS = 2500;
+const AI_SUMMARY_MAX_POLLS = 30;
+const AI_SUMMARY_WAITING_STATUSES = new Set(["READY", "PROCESSING"]);
 
 const TABS = [
   { key: "target", label: "지원 대상" },
@@ -210,6 +218,194 @@ function toPolicyDetail(item = {}, policySlug) {
   };
 }
 
+function getAiSummaryPayload(response) {
+  if (response?.data && typeof response.data === "object") {
+    return response.data;
+  }
+
+  return response || {};
+}
+
+function normalizeAiSummaryStatus(status, summary) {
+  const value = String(status || "").trim().toUpperCase();
+
+  if (["COMPLETED", "COMPLETE", "DONE", "SUCCESS", "SUCCEEDED"].includes(value)) {
+    return "COMPLETED";
+  }
+
+  if (["FAILED", "FAILURE", "ERROR"].includes(value)) {
+    return "FAILED";
+  }
+
+  if (["READY", "PROCESSING", "PENDING", "RUNNING", "LOADING"].includes(value)) {
+    return "PROCESSING";
+  }
+
+  return summary ? "COMPLETED" : "PROCESSING";
+}
+
+function getAiSummaryData(payload) {
+  const rawSummary = payload?.summary || payload?.ai_summary || null;
+  const rawEvidences = payload?.evidences || payload?.evidence || [];
+
+  if (rawSummary && typeof rawSummary === "object" && !Array.isArray(rawSummary)) {
+    return {
+      ...rawSummary,
+      evidences: rawSummary.evidences || rawSummary.evidence || rawEvidences,
+    };
+  }
+
+  if (typeof rawSummary === "string") {
+    return {
+      easy_summary: rawSummary,
+      evidences: rawEvidences,
+    };
+  }
+
+  if (payload?.easy_summary || payload?.key_points || payload?.evidences || payload?.evidence) {
+    return {
+      ...payload,
+      evidences: rawEvidences,
+    };
+  }
+
+  return null;
+}
+
+function getSummaryTextItems(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => {
+        if (typeof item === "string") return item;
+        return [item?.label, item?.content].filter(Boolean).join(": ");
+      })
+      .map((item) => String(item).trim())
+      .filter(Boolean);
+  }
+
+  return String(value)
+    .split(/\r?\n/)
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function PolicyAiSummarySection({
+  status,
+  summary,
+  fallbackSummary,
+  errorMessage,
+  canRetry,
+  onRetry,
+}) {
+  const statusUi = getRequestStatusUi(status);
+  const isWaiting = AI_SUMMARY_WAITING_STATUSES.has(status);
+  const isFailed = status === "FAILED";
+  const keyPoints = getSummaryTextItems(summary?.key_points);
+  const evidences = Array.isArray(summary?.evidences) ? summary.evidences : [];
+  const summaryBlocks = [
+    { label: "대상", value: summary?.target_summary },
+    { label: "혜택", value: summary?.benefit_summary },
+    { label: "신청", value: summary?.application_summary },
+  ].filter((item) => item.value);
+
+  return (
+    <section
+      className="dd-card-soft mt-4"
+      style={{ padding: 22, border: "1px solid var(--dd-coral-100)" }}
+      aria-live="polite"
+    >
+      <div className="d-flex align-items-center justify-content-between gap-2 mb-3 flex-wrap">
+        <span className={"dd-pill " + getAiStatusPillClass(statusUi.variant)}>
+          <Icon name="Sparkles" size={13} /> AI 쉬운 요약 · {statusUi.label}
+        </span>
+        {isFailed && canRetry && (
+          <button
+            type="button"
+            className="dd-btn dd-btn-ghost dd-btn-sm"
+            onClick={onRetry}
+          >
+            <Icon name="RefreshCcw" size={14} /> 다시 시도
+          </button>
+        )}
+      </div>
+
+      {isWaiting && (
+        <div className="d-flex align-items-center gap-3">
+          <span className="dd-analysis-loader" style={{ width: 36, height: 36 }}>
+            <Icon name="LoaderCircle" size={18} />
+          </span>
+          <p className="mb-0" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
+            AI가 정책 원문을 쉬운 말로 정리하고 있어요. 잠시만 기다려 주세요.
+          </p>
+        </div>
+      )}
+
+      {isFailed && (
+        <p className="mb-0" role="alert" style={{ fontSize: 14, color: "var(--dd-coral)", lineHeight: 1.7 }}>
+          <Icon name="CircleAlert" size={14} />{" "}
+          {errorMessage || "AI 요약을 불러오지 못했어요."}
+        </p>
+      )}
+
+      {!isWaiting && !isFailed && (
+        <>
+          <p className="mb-0" style={{ fontSize: 15, color: "var(--dd-stone-700, #44403c)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
+            {summary?.easy_summary || fallbackSummary}
+          </p>
+
+          {keyPoints.length > 0 && (
+            <ul className="mt-3 mb-0 ps-3" style={{ fontSize: 14, color: "var(--dd-stone-600)", lineHeight: 1.8 }}>
+              {keyPoints.slice(0, 3).map((item, index) => (
+                <li key={`${item}-${index}`}>{item}</li>
+              ))}
+            </ul>
+          )}
+
+          {summaryBlocks.length > 0 && (
+            <div className="dd-input-summary-grid mt-3" style={{ padding: 0 }}>
+              {summaryBlocks.map((item) => (
+                <span className="dd-input-summary-chip" key={item.label}>
+                  <span>{item.label}</span>
+                  <strong>{item.value}</strong>
+                </span>
+              ))}
+            </div>
+          )}
+
+          {evidences.length > 0 && (
+            <div className="mt-3">
+              <p className="fw-bold mb-2" style={{ fontSize: 13, color: "var(--dd-ink)" }}>근거</p>
+              <div className="d-flex flex-column gap-2">
+                {evidences.slice(0, 3).map((evidence, index) => (
+                  <div className="dd-evidence-item" key={`${typeof evidence === "string" ? evidence : evidence?.snippet || "evidence"}-${index}`}>
+                    <p className="mb-1" style={{ fontSize: 13, color: "var(--dd-stone-600)", lineHeight: 1.6 }}>
+                      {typeof evidence === "string"
+                        ? evidence
+                        : evidence?.snippet || evidence?.content || "근거 내용을 확인해 주세요."}
+                    </p>
+                    {typeof evidence !== "string" && (evidence?.source_title || evidence?.source_url) && (
+                      <p className="mb-0" style={{ fontSize: 12, color: "var(--dd-stone-500)" }}>
+                        {evidence?.source_url ? (
+                          <a className="dd-link" href={evidence.source_url} target="_blank" rel="noreferrer">
+                            {evidence?.source_title || "출처 보기"}
+                          </a>
+                        ) : (
+                          evidence.source_title
+                        )}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
 export default function PolicyDetailPage() {
   const { id } = useParams();
   const router = useRouter();
@@ -219,6 +415,13 @@ export default function PolicyDetailPage() {
   const [loadError, setLoadError] = useState("");
   const [retryKey, setRetryKey] = useState(0);
   const [tab, setTab] = useState("target");
+  const [summaryRetryKey, setSummaryRetryKey] = useState(0);
+  const [aiSummaryState, setAiSummaryState] = useState({
+    status: "READY",
+    summary: null,
+    errorMessage: "",
+    canRetry: false,
+  });
   const {
     has: isLiked,
     toggle: toggleLike,
@@ -264,6 +467,86 @@ export default function PolicyDetailPage() {
     loadPolicy();
     return () => controller.abort();
   }, [policySlug, retryKey]);
+
+  const aiSummarySlug = policy?.id || policySlug;
+
+  useEffect(() => {
+    if (!aiSummarySlug) {
+      return;
+    }
+
+    const controller = new AbortController();
+    let pollCount = 0;
+    let timerId = null;
+
+    async function loadAiSummary() {
+      setAiSummaryState((current) => ({
+        ...current,
+        status: current.summary ? current.status : "PROCESSING",
+        errorMessage: "",
+        canRetry: false,
+      }));
+
+      try {
+        const response = await policyApi.getPolicyAiSummary(aiSummarySlug, {
+          signal: controller.signal,
+        });
+        const payload = getAiSummaryPayload(response);
+        const summary = getAiSummaryData(payload);
+        const status = normalizeAiSummaryStatus(payload.status || summary?.status, summary);
+
+        if (controller.signal.aborted) {
+          return;
+        }
+
+        setAiSummaryState({
+          status,
+          summary: status === "COMPLETED" ? summary : null,
+          errorMessage: "",
+          canRetry: false,
+        });
+
+        if (AI_SUMMARY_WAITING_STATUSES.has(status)) {
+          if (pollCount < AI_SUMMARY_MAX_POLLS) {
+            pollCount += 1;
+            timerId = window.setTimeout(loadAiSummary, AI_SUMMARY_POLL_INTERVAL_MS);
+          } else {
+            setAiSummaryState({
+              status: "FAILED",
+              summary: null,
+              errorMessage: "AI 요약 생성이 예상보다 오래 걸리고 있어요. 잠시 후 다시 시도해 주세요.",
+              canRetry: true,
+            });
+          }
+        }
+      } catch (requestError) {
+        if (
+          requestError.name !== "CanceledError" &&
+          requestError.code !== "ERR_CANCELED" &&
+          !controller.signal.aborted
+        ) {
+          setAiSummaryState({
+            status: "FAILED",
+            summary: null,
+            errorMessage: getApiErrorMessage(
+              requestError,
+              "AI 요약을 불러오지 못했어요."
+            ),
+            canRetry: true,
+          });
+        }
+      }
+    }
+
+    loadAiSummary();
+
+    return () => {
+      controller.abort();
+      if (timerId) {
+        window.clearTimeout(timerId);
+      }
+    };
+  }, [aiSummarySlug, summaryRetryKey]);
 
   const liked = isLiked(policy?.id || policySlug);
   const likeSlug = policy?.id || policySlug;
@@ -440,14 +723,14 @@ export default function PolicyDetailPage() {
               </table>
             </div>
 
-            <div className="dd-card-soft mt-4" style={{ padding: 22, border: "1px solid var(--dd-coral-100)" }}>
-              <div className="d-flex align-items-center gap-2 mb-2">
-                <span className="dd-pill dd-pill-coral"><Icon name="Sparkles" size={13} /> AI 쉬운 요약</span>
-              </div>
-              <p className="mb-0" style={{ fontSize: 15, color: "var(--dd-stone-700, #44403c)", lineHeight: 1.8, whiteSpace: "pre-wrap" }}>
-                {policy.easySummary}
-              </p>
-            </div>
+            <PolicyAiSummarySection
+              status={aiSummaryState.status}
+              summary={aiSummaryState.summary}
+              fallbackSummary={policy.easySummary}
+              errorMessage={aiSummaryState.errorMessage}
+              canRetry={aiSummaryState.canRetry}
+              onRetry={() => setSummaryRetryKey((current) => current + 1)}
+            />
 
             <div className="mt-4">
               <div className="dd-tabs">
