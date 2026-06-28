@@ -41,21 +41,45 @@ const VIEW_TO_REQUEST_STATUS = {
   error: "FAILED",
 };
 
-// 백엔드 candidate_status를 그대로 사용해 카드 상태 배지를 표시한다.
-// 프론트에서 지원 가능성을 재판정하지 않고 응답 값만 매핑한다.
+// 카드 상태 배지 메타. 키는 후보 필터 단계의 candidate_status 기준이지만,
+// 표시는 최종 판정(user_status)을 우선 사용한다(아래 normalizeBadgeStatus 참고).
 const CANDIDATE_STATUS_META = {
   CANDIDATE: { label: "잘 맞는 정책", pill: "dd-pill-green", icon: "CircleCheck" },
   UNCERTAIN: { label: "확인해 볼 정책", pill: "dd-pill-amber", icon: "CircleAlert" },
   EXCLUDED: { label: "조건 확인 필요", pill: "dd-pill-coral", icon: "X" },
 };
 
+// 최종 사용자 판정(user_status) → 배지 키 매핑.
+// candidate_status는 후보 필터 단계 값이라, assessment에서 핵심 정보 부족 등으로
+// 판정이 바뀐 경우(예: 후보 CANDIDATE → 판정 NEEDS_CONFIRMATION)를 반영하지 못한다.
+// 따라서 user_status를 우선 사용하고, 없을 때만 candidate_status로 fallback한다.
+const USER_STATUS_TO_BADGE = {
+  RECOMMENDABLE: "CANDIDATE",
+  NEEDS_CONFIRMATION: "UNCERTAIN",
+  DIFFICULT_TO_RECOMMEND: "EXCLUDED",
+};
+
 // "잘 맞는 점"은 장황한 사유 문장 대신 짧은 매칭 조건 라벨(생애주기·자녀 나이 등)만
 // 칩으로 노출한다. 너무 길어지지 않게 최대 개수만 보여주고 나머지는 "외 n개"로 축약한다.
 const MATCHED_LABEL_LIMIT = 4;
 
-const normalizeCandidateStatus = (status) => {
-  const value = String(status || "").trim().toUpperCase();
-  return CANDIDATE_STATUS_META[value] ? value : "";
+// 카드 배지 상태: 최종 판정(user_status) 우선, 없으면 candidate_status로 fallback.
+const normalizeBadgeStatus = (recommendation) => {
+  const userStatus = String(
+    recommendation?.user_status ?? recommendation?.userStatus ?? ""
+  )
+    .trim()
+    .toUpperCase();
+  if (USER_STATUS_TO_BADGE[userStatus]) {
+    return USER_STATUS_TO_BADGE[userStatus];
+  }
+
+  const candidateStatus = String(
+    recommendation?.candidate_status ?? recommendation?.candidateStatus ?? ""
+  )
+    .trim()
+    .toUpperCase();
+  return CANDIDATE_STATUS_META[candidateStatus] ? candidateStatus : "";
 };
 
 // 백엔드에서 드물게 내부 토큰(대문자 SNAKE_CASE 규칙 코드 등)이 문장에 섞여
@@ -114,9 +138,8 @@ const sanitizeReason = (reason) => {
   return sanitizeDisplayText(value);
 };
 
-// "잘 맞는 점" 칩: 백엔드가 정리한 매칭 조건 라벨(reasons.matched_labels)을 사용한다.
-// 내부 신호/지역은 백엔드에서 이미 제외되며, 프론트에서는 안전망으로 한 번 더 정제한다.
-const normalizeMatchedLabels = (reasons) => {
+// reasons 객체에서 매칭 조건 라벨(matched_labels)만 추출·정제한다.
+const extractMatchedLabels = (reasons) => {
   if (!reasons || typeof reasons !== "object") {
     return [];
   }
@@ -135,6 +158,26 @@ const normalizeMatchedLabels = (reasons) => {
     }
   });
   return labels;
+};
+
+// "잘 맞는 점" 칩: 백엔드가 정리한 매칭 조건 라벨을 사용한다.
+// top-level reasons를 우선 보되, 캐시/구버전 응답 대비로
+// filter_match_json.reasons도 fallback으로 확인한다.
+// 내부 신호/지역은 백엔드에서 이미 제외되며, 프론트에서 한 번 더 정제한다.
+const normalizeMatchedLabels = (recommendation) => {
+  const reasonSources = [
+    recommendation?.reasons,
+    recommendation?.filter_match_json?.reasons,
+    recommendation?.filterMatchJson?.reasons,
+  ];
+
+  for (const reasons of reasonSources) {
+    const labels = extractMatchedLabels(reasons);
+    if (labels.length > 0) {
+      return labels;
+    }
+  }
+  return [];
 };
 
 const firstText = (...values) =>
@@ -227,26 +270,23 @@ const mapRecommendationToPolicyCardProps = (recommendation, index) => {
   return {
     key: `${id}-${index}`,
     detailHref,
-    // 사용자 표시 점수: priority_score > match_score > confidence_score 순.
-    // retrieval_score는 내부 검색 점수라 표시용으로 쓰지 않는다.
+    // 표시용 적합도: 백엔드 판정(assessment) 기반의 표시 전용 점수만 쓴다.
+    // condition_match_score(표시 전용 별칭) → confidence_score 순.
+    // priority_score(순위 합성값)/match_score(룰 매칭)는 표시용이 아니므로 쓰지 않고,
+    // 둘 다 없으면(캐시/구버전/예외 응답) match=null → 점수 배지를 숨긴다.
     match: normalizeMatchScore(
       firstValue(
-        recommendation?.priority_score,
-        recommendation?.priorityScore,
-        recommendation?.match_score,
-        recommendation?.matchScore,
+        recommendation?.condition_match_score,
+        recommendation?.conditionMatchScore,
         recommendation?.confidence_score,
-        recommendation?.confidenceScore,
-        recommendation?.score,
-        recommendation?.match
+        recommendation?.confidenceScore
       )
     ),
-    // 지원 가능성 상태/사유: 백엔드 응답 필드를 그대로 보존해 카드에 노출한다.
-    candidateStatus: normalizeCandidateStatus(
-      recommendation?.candidate_status ?? recommendation?.candidateStatus
-    ),
-    // "잘 맞는 점" 칩: 매칭 조건 라벨만 짧게.
-    matchedLabels: normalizeMatchedLabels(recommendation?.reasons),
+    // 지원 가능성 배지: 최종 판정(user_status) 우선, 없으면 candidate_status.
+    candidateStatus: normalizeBadgeStatus(recommendation),
+    // "잘 맞는 점" 칩: 매칭 조건 라벨만 짧게. top-level reasons가 우선이지만
+    // 캐시/구버전 응답 대비로 filter_match_json.reasons도 fallback으로 본다.
+    matchedLabels: normalizeMatchedLabels(recommendation),
     policy: {
       id,
       name:
@@ -568,9 +608,12 @@ function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
               <span className={"dd-pill dd-pill-" + policy.tagTone}>{policy.tag}</span>
             )}
             {match != null && (
-              <span className="dd-badge-match">
+              <span
+                className="dd-badge-match"
+                title="입력 조건과의 AI 적합도"
+              >
                 <Icon name="Star" size={12} fill="currentColor" />
-                {match}%
+                적합도 {match}%
               </span>
             )}
           </div>
