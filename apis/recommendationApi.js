@@ -27,6 +27,9 @@ const getPayload = (data) => {
   return data;
 };
 
+// 추천 결과 item은 원본 객체를 그대로 반환한다.
+// candidate_status / reason_summary / reason / reasons 등 백엔드 표시용 필드가
+// 정규화 과정에서 누락되지 않도록 item을 가공/재구성하지 않는다.
 const getRecommendationItems = (data) => {
   const payload = getPayload(data);
 
