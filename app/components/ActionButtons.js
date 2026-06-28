@@ -13,7 +13,9 @@ import { ACTION_META } from "@/app/data/constants";
 function defaultHref(key, policyId) {
   switch (key) {
     case "eligibility":
-      return policyId ? `/eligibility?policyId=${policyId}&source=policy-detail` : "/recommend";
+      return policyId
+        ? `/policies/${encodeURIComponent(policyId)}/eligibility?source=policy-detail`
+        : "/recommend";
     case "apply":
       return policyId ? `/policies/${policyId}/apply` : "/policies";
     case "compare":
