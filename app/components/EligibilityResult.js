@@ -453,10 +453,16 @@ const getFollowUpOptions = (question, field) => {
 };
 
 const buildBaseUserConditions = (entrySource, recommendationRequestId) => {
+  if (entrySource !== ENTRY_SOURCE.RECOMMENDATION) {
+    return {
+      conditions: {},
+      family: DEFAULT_FAMILY,
+      recommendationInput: null,
+    };
+  }
+
   const recommendationInput =
-    entrySource === ENTRY_SOURCE.RECOMMENDATION
-      ? readRecommendationInput(recommendationRequestId)
-      : null;
+    readRecommendationInput(recommendationRequestId);
 
   const family = recommendationInput?.family || readStoredFamily();
   const conditions =
@@ -481,17 +487,6 @@ const mergeFollowUpConditions = (baseConditions, answers) => {
   });
 
   return merged;
-};
-
-const mergeManualConfirmations = (baseConditions, confirmations) => {
-  if (confirmations.length === 0) {
-    return baseConditions;
-  }
-
-  return {
-    ...baseConditions,
-    manual_confirmations: confirmations,
-  };
 };
 
 const resolveFollowUpAnswers = (questions, answers, inputFamily) => {
@@ -688,7 +683,10 @@ export default function EligibilityResult({
       entrySource === ENTRY_SOURCE.RECOMMENDATION
         ? readRecommendationInput(recommendationRequestId)
         : null;
-    const nextFamily = recommendationInput?.family || readStoredFamily();
+    const nextFamily =
+      entrySource === ENTRY_SOURCE.RECOMMENDATION
+        ? recommendationInput?.family || readStoredFamily()
+        : DEFAULT_FAMILY;
     startTransition(() => setCurrentFamily(nextFamily));
   }, [entrySource, recommendationRequestId]);
 
@@ -717,11 +715,12 @@ export default function EligibilityResult({
       try {
         const { conditions: userConditions, recommendationInput } =
           buildBaseUserConditions(entrySource, recommendationRequestId);
+        const isRecommendationSource = entrySource === ENTRY_SOURCE.RECOMMENDATION;
         const response = await eligibilityApi.createRequest({
           policyId: policyIdentifier,
-          userConditions,
+          userConditions: isRecommendationSource ? userConditions : undefined,
           sourceType:
-            entrySource === ENTRY_SOURCE.RECOMMENDATION
+            isRecommendationSource
               ? SOURCE_TYPE.RECOMMENDATION_RESULT
               : SOURCE_TYPE.POLICY_DETAIL,
           sourceRefId:
@@ -904,6 +903,13 @@ export default function EligibilityResult({
     try {
       const { conditions, family: baseFamily, recommendationInput } =
         buildBaseUserConditions(entrySource, recommendationRequestId);
+      const isRecommendationSource = entrySource === ENTRY_SOURCE.RECOMMENDATION;
+      const baseConditions =
+        isRecommendationSource &&
+        requestResult?.input_summary &&
+        Object.keys(requestResult.input_summary).length > 0
+          ? requestResult.input_summary
+          : conditions;
       const resolvedAnswers = resolveFollowUpAnswers(
         getQuestions(requestResult),
         followUpAnswers,
@@ -945,9 +951,9 @@ export default function EligibilityResult({
         ...questionConfirmations,
         ...criteriaConfirmations,
       ];
-      const userConditions = mergeManualConfirmations(
-        mergeFollowUpConditions(conditions, resolvedAnswers),
-        manualConfirmations
+      const userConditions = mergeFollowUpConditions(
+        isRecommendationSource ? baseConditions : {},
+        resolvedAnswers
       );
       const nextFamily = normalizeFamilyProfile({
         ...baseFamily,
@@ -957,7 +963,7 @@ export default function EligibilityResult({
         policyId: policyIdentifier,
         userConditions,
         sourceType:
-          entrySource === ENTRY_SOURCE.RECOMMENDATION
+          isRecommendationSource
             ? SOURCE_TYPE.RECOMMENDATION_RESULT
             : SOURCE_TYPE.POLICY_DETAIL,
         sourceRefId:
@@ -966,6 +972,7 @@ export default function EligibilityResult({
           activeRequestId ||
           policyIdentifier,
         rawQuery: recommendationInput?.rawQuery,
+        manualConfirmations,
       });
       const nextRequestId = response?.request_id || response?.requestId;
 

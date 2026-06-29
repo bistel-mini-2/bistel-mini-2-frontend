@@ -23,6 +23,7 @@ import {
   DEFAULT_FAMILY,
   FAMILY_PROFILE_KEY,
   RECOMMENDATION_INPUT_KEY,
+  createRecommendationPayload,
   normalizeFamilyProfile,
 } from "@/app/data/family";
 import {
@@ -901,6 +902,17 @@ function RecommendResultContent() {
             errorStatus: null,
           });
           return;
+        }
+
+        if (result.selectedConditions) {
+          startTransition(() => {
+            setRecommendationInput((current) => ({
+              ...(current || {}),
+              requestId: result.requestId || requestId,
+              rawQuery: current?.rawQuery || result.rawQuery || "",
+              selectedConditions: result.selectedConditions,
+            }));
+          });
         }
 
         // 추가질문 게이트: 결과 대신 답변 폼을 띄운다.
