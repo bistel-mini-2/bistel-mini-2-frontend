@@ -347,7 +347,7 @@ function RecommendResultFallback() {
     <div className="dd-page">
       <Header />
       <main className="dd-shell" style={{ paddingTop: 32, paddingBottom: 64 }}>
-        <StepIndicator current={3} />
+        <StepIndicator current={2} />
         <LoadingState />
       </main>
     </div>
@@ -375,8 +375,34 @@ function FollowUpGate({ questions, onSubmit, onSkip, submitting }) {
   const visibleQuestions = questions.slice(0, 2);
   const [answers, setAnswers] = useState({});
 
+  // 답변을 하나라도 입력했는지(빈 답변으로 "다시 추천" 누르면 건너뛰기와 같아지는 혼란 방지).
+  const hasAnyAnswer = visibleQuestions.some(
+    (question) => (answers[question] || "").trim()
+  );
+
+  // follow_up 상태인데 질문이 비어 있는 예외 상황: 빈 화면 대신 결과로 진행할 수 있게 안내.
   if (visibleQuestions.length === 0) {
-    return null;
+    return (
+      <div className="dd-card dd-card-lg mt-4 text-center" style={{ padding: "44px 24px" }}>
+        <span className="dd-icon-tile dd-tile-rose mx-auto">
+          <Icon name="Sparkles" size={24} />
+        </span>
+        <h1 className="dd-title mt-3" style={{ fontSize: 26 }}>
+          추천 결과를 보여드릴게요
+        </h1>
+        <p className="mb-0 mt-2" style={{ color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
+          추가로 확인할 정보가 없어요. 바로 결과를 확인해 주세요.
+        </p>
+        <button
+          type="button"
+          className="dd-btn dd-btn-coral mt-4"
+          onClick={onSkip}
+          disabled={submitting}
+        >
+          <Icon name={submitting ? "LoaderCircle" : "ArrowRight"} size={16} /> 결과 보기
+        </button>
+      </div>
+    );
   }
 
   const handleSubmit = (event) => {
@@ -430,7 +456,11 @@ function FollowUpGate({ questions, onSubmit, onSkip, submitting }) {
       </div>
 
       <div className="d-flex flex-wrap gap-2 mt-4">
-        <button type="submit" className="dd-btn dd-btn-coral" disabled={submitting}>
+        <button
+          type="submit"
+          className="dd-btn dd-btn-coral"
+          disabled={submitting || !hasAnyAnswer}
+        >
           <Icon name={submitting ? "LoaderCircle" : "ArrowRight"} size={16} />
           {submitting ? "반영 중..." : "답변 반영하고 다시 추천"}
         </button>
@@ -443,6 +473,11 @@ function FollowUpGate({ questions, onSubmit, onSkip, submitting }) {
           그냥 결과 보기
         </button>
       </div>
+      {!hasAnyAnswer && (
+        <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 13 }}>
+          답변을 입력하면 반영해 다시 추천해드려요. 그냥 보려면 아래 &lsquo;그냥 결과 보기&rsquo;를 눌러주세요.
+        </p>
+      )}
     </form>
   );
 }
@@ -1051,7 +1086,7 @@ function RecommendResultContent() {
     <div className="dd-page">
       <Header />
       <main className="dd-shell" style={{ paddingTop: 32, paddingBottom: 64 }}>
-        <StepIndicator current={viewState.status === "follow_up" ? 2 : 3} />
+        <StepIndicator current={viewState.status === "done" ? 3 : 2} />
 
         {!requestId && (
           <ErrorState
