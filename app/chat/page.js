@@ -1276,6 +1276,7 @@ export default function ChatPage() {
         requestId: "",
         policyId,
         policyName,
+        sourceType: "RECOMMENDATION_RESULT",
         sourceRefId,
         status: REQUEST_STATUS.PROCESSING,
         questions: [],
@@ -1325,22 +1326,19 @@ export default function ChatPage() {
     [addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
   );
 
+  const buildManualConfirmations = (answer) => {
+    const answers = answer?.answers || {};
+    return Object.entries(answers).map(([question, value]) => ({
+      question,
+      answer: ["yes", "no", "unknown"].includes(value) ? value : "unknown",
+    }));
+  };
+
   const submitEligibilityAnswer = useCallback(
     async (answer) => {
       if (!activeEligibility?.requestId || sending || restoring) return;
 
       const text = typeof answer === "string" ? answer : answer?.text || answer?.raw_answer || "";
-      const payload =
-        typeof answer === "string"
-          ? { raw_answer: answer }
-          : {
-              raw_answer: answer?.raw_answer || text,
-              answers: answer?.answers || {},
-            };
-
-      if (!payload.raw_answer && Object.keys(payload.answers || {}).length === 0) {
-        payload.raw_answer = "잘 모르겠어요";
-      }
 
       const userMessageId = makeId("user-eligibility");
       if (text) {
@@ -1358,8 +1356,27 @@ export default function ChatPage() {
       }));
 
       try {
-        await eligibilityApi.submitAnswers(activeEligibility.requestId, payload);
-        await fetchEligibilityResult(activeEligibility.requestId, activeEligibility);
+        const response = await eligibilityApi.createRequest({
+          policyId: activeEligibility.policyId,
+          sourceType: activeEligibility.sourceType,
+          sourceRefId: activeEligibility.sourceRefId,
+          rawQuery: text,
+          manualConfirmations: buildManualConfirmations(answer),
+        });
+        const requestId = getEligibilityRequestId(response);
+        if (!requestId) {
+          throw new Error("지원가능성 분석 요청 번호를 받지 못했어요.");
+        }
+        const nextEligibility = {
+          ...activeEligibility,
+          requestId: String(requestId),
+          status: REQUEST_STATUS.PROCESSING,
+          questions: [],
+          error: "",
+          loadingMessage: "입력한 답변을 반영해 지원 가능성을 다시 확인하고 있어요.",
+        };
+        setActiveEligibility(nextEligibility);
+        await fetchEligibilityResult(String(requestId), nextEligibility);
       } catch (nextError) {
         addError(getApiErrorMessage(nextError, "지원가능성 분석 답변을 제출하지 못했어요."), text);
       } finally {
@@ -1509,6 +1526,21 @@ export default function ChatPage() {
           const withoutStream = prev.filter((message) => message.id !== streamId);
           return [...withoutStream, assistantMessage];
         });
+        const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
+        if (eligibilityResult) {
+          setActiveEligibility((prev) => {
+            if (!prev) return null;
+            return {
+              ...prev,
+              requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || prev.requestId),
+              status: eligibilityResult.status || prev.status,
+              questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
+              criteria: eligibilityResult.criteria || [],
+              result: eligibilityResult,
+              error: "",
+            };
+          });
+        }
       },
       onError: () => { streamFailed = true; clearProgress(); },
     });
@@ -1546,39 +1578,23 @@ export default function ChatPage() {
         addError("로그인 후 챗봇 상담을 이용할 수 있어요.", text);
         return;
       }
-      const hasEligibilityFollowUp =
-        activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
-        activeEligibility?.questions?.length > 0 ||
-        hasEligibilityClarificationContext(activeEligibility);
-      if (hasEligibilityFollowUp && isEligibilityClarificationQuestion(text)) {
-        setInput("");
-        setMessages((prev) => [
-          ...prev,
-          { id: makeId("user-eligibility-question"), role: "user", content: text },
-          {
-            id: makeId("assistant-eligibility-question"),
-            role: "assistant",
-            content: buildEligibilityClarificationMessage(activeEligibility),
-            disclaimer: false,
-          },
-        ]);
-        return;
-      }
-      if (
-        (activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
-          activeEligibility?.questions?.length > 0) &&
-        !hasRecommendIntent(text)
-      ) {
-        setInput("");
-        await submitEligibilityAnswer(text);
-        return;
-      }
       try {
         if (!isRecommendRef.current) {
           isRecommendRef.current = hasRecommendIntent(text);
         }
         if (isRecommendRef.current) {
           setActiveEligibility(null);
+        } else if (
+          activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
+          activeEligibility?.questions?.length > 0
+        ) {
+          setActiveEligibility((prev) => ({
+            ...prev,
+            status: REQUEST_STATUS.PROCESSING,
+            questions: [],
+            error: "",
+            loadingMessage: "입력한 답변을 반영해 지원 가능성을 다시 확인하고 있어요.",
+          }));
         }
         const sessionId = await ensureSession(text);
         await finalizeSend(sessionId, text);
@@ -1598,7 +1614,6 @@ export default function ChatPage() {
       isAuthenticated,
       restoring,
       sending,
-      submitEligibilityAnswer,
     ]
   );
 
