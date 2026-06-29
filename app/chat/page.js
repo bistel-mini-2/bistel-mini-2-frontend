@@ -1328,21 +1328,26 @@ export default function ChatPage() {
     [addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
   );
 
-  // answer.answers가 없는 순수 텍스트 경로는 manual_confirmations를 생성하지 않는다.
-  // 후속질문 UI는 반드시 선택형(버튼)으로만 제공해 이 경로를 방지한다.
-  const buildManualConfirmations = (answer) => {
-    const answers = answer?.answers || {};
-    return Object.entries(answers).map(([question, value]) => ({
-      question,
-      answer: ["yes", "no", "unknown"].includes(value) ? value : "unknown",
-    }));
-  };
-
   const submitEligibilityAnswer = useCallback(
     async (answer) => {
       if (!activeEligibility?.requestId || sending || restoring) return;
 
       const text = typeof answer === "string" ? answer : answer?.text || answer?.raw_answer || "";
+
+      // answers를 yes/no 확인(manual_confirmations)과 조건값(userConditions 병합)으로 분리한다.
+      // SlotDock의 "잘 모르겠어요" 선택은 "__UNKNOWN__"으로 오며, userConditions에서 제외한다.
+      const rawAnswers = answer?.answers || {};
+      const manualConfirmations = [];
+      const conditionUpdates = {};
+      for (const [key, value] of Object.entries(rawAnswers)) {
+        if (value === "__UNKNOWN__") continue;
+        if (["yes", "no", "unknown"].includes(value)) {
+          manualConfirmations.push({ question: key, answer: value });
+        } else {
+          conditionUpdates[key] = value;
+        }
+      }
+      const mergedUserConditions = { ...(activeEligibility.userConditions || {}), ...conditionUpdates };
 
       const userMessageId = makeId("user-eligibility");
       if (text) {
@@ -1364,9 +1369,9 @@ export default function ChatPage() {
           policyId: activeEligibility.policyId,
           sourceType: activeEligibility.sourceType,
           sourceRefId: activeEligibility.sourceRefId,
-          userConditions: activeEligibility.userConditions,
+          userConditions: mergedUserConditions,
           rawQuery: text,
-          manualConfirmations: buildManualConfirmations(answer),
+          manualConfirmations,
         });
         const requestId = getEligibilityRequestId(response);
         if (!requestId) {
@@ -1375,6 +1380,7 @@ export default function ChatPage() {
         const nextEligibility = {
           ...activeEligibility,
           requestId: String(requestId),
+          userConditions: mergedUserConditions,
           status: REQUEST_STATUS.PROCESSING,
           questions: [],
           error: "",
