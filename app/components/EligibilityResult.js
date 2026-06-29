@@ -920,6 +920,7 @@ export default function EligibilityResult({
           return {
             question: getQuestionText(question),
             answer,
+            source: question.source_point || question.source || null,
             note: question.reason || null,
           };
         })
@@ -935,6 +936,7 @@ export default function EligibilityResult({
           return {
             question: criterion.label,
             answer,
+            source: criterion.source_point || criterion.source || null,
             note: getCriteriaNote(criterion) || null,
           };
         })
