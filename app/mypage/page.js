@@ -45,7 +45,7 @@ const TABS = [
 ];
 const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
 const MYPAGE_RAIL_WIDTH = 960;
-const MYPAGE_CONTENT_WIDTH = 960;
+const MYPAGE_CONTENT_WIDTH = 720;
 
 // 더미 저장 데이터(초기값) — 실제로는 API/스토리지에서 로드
 const INIT_CHAT = [
