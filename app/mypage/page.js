@@ -150,11 +150,18 @@ function DelBtn({ onClick, style, disabled = false }) {
 }
 
 function toFavoritePolicyCard(item) {
-  const policySlug = item.policy_slug || item.slug || item.policy_id;
-  const policyName = item.policy_name || item.name || "정책명 확인 필요";
+  const policySlug = item.policy_slug || item.slug || item.policy_code || item.policy_id;
+  const policyName = item.policy_name || item.name || item.title || "정책명 확인 필요";
   const savedDate = item.saved_at
     ? new Intl.DateTimeFormat("ko-KR").format(new Date(item.saved_at))
     : "저장일 정보 없음";
+  const summary =
+    item.benefit_summary_display ||
+    item.benefit_summary ||
+    item.target_summary ||
+    item.target_stage_display ||
+    item.life_stage_display ||
+    "관심 정책으로 저장한 정책이에요.";
 
   return {
     id: policySlug,
@@ -162,9 +169,7 @@ function toFavoritePolicyCard(item) {
     icon: "Heart",
     tag: item.category || "복지 정책",
     tagTone: "coral",
-    summary: item.region
-      ? `지원 지역: ${item.region === "national" ? "전국" : item.region}`
-      : "관심 정책으로 저장한 정책이에요.",
+    summary,
     amount: item.category || "분야 정보 없음",
     period: `저장일 ${savedDate}`,
   };
@@ -1356,6 +1361,7 @@ function MyPageContent() {
                           <div className="position-relative h-100">
                             <DelBtn
                               onClick={() => removeLiked(p.id)}
+                              disabled={pendingLikedIds.includes(p.id)}
                               style={{
                                 position: "absolute",
                                 top: 14,
@@ -1391,8 +1397,8 @@ function MyPageContent() {
                 ) : (
                   <EmptyState
                     icon="Heart"
-                    title="관심 정책이 비어 있어요"
-                    desc="정책 리스트에서 하트를 눌러 우리 가족에게 맞는 정책을 모아보세요."
+                    title="아직 저장한 관심 정책이 없어요."
+                    desc="정책 목록에서 하트 버튼을 눌러 관심 정책을 저장해 보세요."
                     href="/policies"
                     cta="정책 보러 가기"
                     maxWidth={MYPAGE_CONTENT_WIDTH}
