@@ -1272,12 +1272,21 @@ export default function ChatPage() {
       }
 
       const sourceRefId = getRecommendationSourceRefId(policy, sourceMessage);
+      const userConditions =
+        policy.selected_conditions ||
+        policy.selectedConditions ||
+        policy.merged_condition_json ||
+        policy.mergedConditionJson ||
+        policy.user_conditions ||
+        policy.userConditions ||
+        {};
       const base = {
         requestId: "",
         policyId,
         policyName,
         sourceType: "RECOMMENDATION_RESULT",
         sourceRefId,
+        userConditions,
         status: REQUEST_STATUS.PROCESSING,
         questions: [],
         criteria: [],
@@ -1294,14 +1303,7 @@ export default function ChatPage() {
           policyId,
           sourceType: "RECOMMENDATION_RESULT",
           sourceRefId,
-          userConditions:
-            policy.selected_conditions ||
-            policy.selectedConditions ||
-            policy.merged_condition_json ||
-            policy.mergedConditionJson ||
-            policy.user_conditions ||
-            policy.userConditions ||
-            {},
+          userConditions,
           rawQuery: `${policyName} 지원가능성 분석`,
         });
         const requestId = getEligibilityRequestId(response);
@@ -1326,6 +1328,8 @@ export default function ChatPage() {
     [addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
   );
 
+  // answer.answers가 없는 순수 텍스트 경로는 manual_confirmations를 생성하지 않는다.
+  // 후속질문 UI는 반드시 선택형(버튼)으로만 제공해 이 경로를 방지한다.
   const buildManualConfirmations = (answer) => {
     const answers = answer?.answers || {};
     return Object.entries(answers).map(([question, value]) => ({
@@ -1360,6 +1364,7 @@ export default function ChatPage() {
           policyId: activeEligibility.policyId,
           sourceType: activeEligibility.sourceType,
           sourceRefId: activeEligibility.sourceRefId,
+          userConditions: activeEligibility.userConditions,
           rawQuery: text,
           manualConfirmations: buildManualConfirmations(answer),
         });
@@ -1529,7 +1534,23 @@ export default function ChatPage() {
         const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
         if (eligibilityResult) {
           setActiveEligibility((prev) => {
-            if (!prev) return null;
+            if (!prev) {
+              // 일반 채팅 응답으로 eligibility_result가 직접 내려온 경우
+              return {
+                requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || ""),
+                policyId: eligibilityResult.policy_id || eligibilityResult.policyId || "",
+                policyName: eligibilityResult.policy_name || eligibilityResult.policyName || "",
+                sourceType: eligibilityResult.source_type || eligibilityResult.sourceType || "POLICY_DETAIL",
+                sourceRefId: eligibilityResult.source_ref_id || eligibilityResult.sourceRefId || null,
+                userConditions: eligibilityResult.user_conditions || eligibilityResult.userConditions || {},
+                status: eligibilityResult.status || REQUEST_STATUS.COMPLETED,
+                questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
+                criteria: eligibilityResult.criteria || [],
+                result: eligibilityResult,
+                error: "",
+                loadingMessage: "",
+              };
+            }
             return {
               ...prev,
               requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || prev.requestId),
