@@ -920,6 +920,7 @@ export default function EligibilityResult({
           return {
             question: getQuestionText(question),
             answer,
+            source: question.source_point || question.source || null,
             note: question.reason || null,
           };
         })
@@ -935,6 +936,7 @@ export default function EligibilityResult({
           return {
             question: criterion.label,
             answer,
+            source: criterion.source_point || criterion.source || null,
             note: getCriteriaNote(criterion) || null,
           };
         })
@@ -1033,7 +1035,11 @@ export default function EligibilityResult({
     const field = normalizeFollowUpField(question);
     return Boolean(field) && field !== "region" && field !== "manual_confirmation";
   });
-  const confirmationQuestions = criteria.filter(isConfirmationCriterion);
+  const hasStructuredFollowUpQuestions =
+    actionableQuestions.length > 0 || manualFollowUpQuestions.length > 0;
+  const confirmationQuestions = hasStructuredFollowUpQuestions
+    ? []
+    : criteria.filter(isConfirmationCriterion);
   const confirmationQuestionKeys = new Set(
     confirmationQuestions.map((criterion) => criterion.label)
   );
