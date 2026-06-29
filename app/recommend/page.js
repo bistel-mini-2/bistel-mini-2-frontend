@@ -6,10 +6,12 @@
 // 구성: 스텝 인디케이터(1단계 활성) · 좌측 입력 폼 · 우측 입력 요약 카드 ·
 //       하단 코랄 CTA "추천 정책 확인하기" → 추천 요청 생성 후 /recommend/result.
 // =========================================================================
-import { useState } from "react";
+import { useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { createRecommendationRequest } from "@/apis/recommendationApi";
+import familyProfileApi from "@/apis/familyProfileApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
+import { AuthContext } from "@/contexts/AuthContext";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
@@ -25,26 +27,66 @@ import {
 
 export default function RecommendPage() {
   const router = useRouter();
+  const { isAuthenticated, isLoading: authLoading } = useContext(AuthContext);
   const [family, setFamily] = useState(DEFAULT_FAMILY);
   const [rawQuery, setRawQuery] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
   const normalizedFamily = normalizeFamilyProfile(family);
+  // 저장 프로필 자동 반영은 1회만, 그리고 사용자가 이미 폼을 건드렸으면 덮어쓰지 않는다.
+  const hydratedRef = useRef(false);
+  const userEditedRef = useRef(false);
 
-  const set = (key, value) => setFamily((f) => ({ ...f, [key]: value }));
-  const selectChildAge = (value) =>
+  const set = (key, value) => {
+    userEditedRef.current = true;
+    setFamily((f) => ({ ...f, [key]: value }));
+  };
+  const selectChildAge = (value) => {
+    userEditedRef.current = true;
     setFamily((family) => ({
       ...family,
       childAge: value,
       childrenAges: [value],
     }));
-  const toggleSpecial = (value) =>
+  };
+  const toggleSpecial = (value) => {
+    userEditedRef.current = true;
     setFamily((f) => ({
       ...f,
       special: f.special.includes(value)
         ? f.special.filter((s) => s !== value)
         : [...f.special, value],
     }));
+  };
+
+  // 로그인 사용자면 저장된 가족 프로필을 불러와 입력 폼 기본값으로 채운다.
+  // 없거나 조회 실패(401 등)면 DEFAULT_FAMILY 그대로 둔다.
+  useEffect(() => {
+    if (typeof window === "undefined" || authLoading || !isAuthenticated) {
+      return;
+    }
+    if (hydratedRef.current || userEditedRef.current) {
+      return;
+    }
+
+    let ignore = false;
+    (async () => {
+      try {
+        const saved = await familyProfileApi.getMe();
+        if (ignore || !saved || hydratedRef.current || userEditedRef.current) {
+          return;
+        }
+        hydratedRef.current = true;
+        setFamily(normalizeFamilyProfile(saved));
+      } catch {
+        // 저장 프로필 없음/조회 실패 → 기본값 유지(폼 깨지지 않음).
+      }
+    })();
+
+    return () => {
+      ignore = true;
+    };
+  }, [isAuthenticated, authLoading]);
 
   const summaryRows = familyRows(normalizedFamily);
 
