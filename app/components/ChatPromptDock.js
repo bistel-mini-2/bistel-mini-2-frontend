@@ -63,7 +63,7 @@ const FIELD_OPTION_FALLBACKS = {
     { label: "다문화·탈북민 가정", value: "multi" },
     { label: "장애인 가구", value: "disabled" },
     { label: "다자녀 가정(2명 이상)", value: "many" },
-    { label: "저소득 가구", value: "dual" },
+    { label: "맞벌이", value: "dual" },
   ],
 };
 

@@ -409,7 +409,6 @@ const CONDITION_VALUE_MAP = {
     "다자녀": "many",
     "다자녀 가정(2명 이상)": "many",
     "맞벌이": "dual",
-    "저소득 가구": "dual",
   },
 };
 

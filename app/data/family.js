@@ -55,7 +55,7 @@ export const FAMILY_OPTIONS = {
     { value: "multi", label: "다문화·탈북민 가정" },
     { value: "disabled", label: "장애인 가구" },
     { value: "many", label: "다자녀 가정(2명 이상)" },
-    { value: "dual", label: "저소득 가구" },
+    { value: "dual", label: "맞벌이" },
   ],
 };
 
