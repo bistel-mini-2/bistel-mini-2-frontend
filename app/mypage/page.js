@@ -22,6 +22,7 @@ import PolicyCard from "@/app/components/PolicyCard";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
 import compareApi from "@/apis/compareApi";
+import chatApi from "@/apis/chatApi";
 import { getRecommendationHistory } from "@/apis/recommendationApi";
 import { AuthContext } from "@/contexts/AuthContext";
 import familyProfileApi from "@/apis/familyProfileApi";
@@ -47,22 +48,10 @@ const TAB_KEYS = new Set(TABS.map((tab) => tab.key));
 const MYPAGE_RAIL_WIDTH = 960;
 const MYPAGE_CONTENT_WIDTH = 720;
 
-// 더미 저장 데이터(초기값) — 실제로는 API/스토리지에서 로드
-const INIT_CHAT = [
-  {
-    id: 1,
-    date: "2026.06.12",
-    q: "부모급여랑 아동수당 뭐가 달라?",
-    tag: "비교",
-  },
-  { id: 2, date: "2026.06.09", q: "첫만남이용권 신청 준비물", tag: "신청준비" },
-  {
-    id: 3,
-    date: "2026.06.01",
-    q: "어린이집 다녀도 아이돌봄 되나요?",
-    tag: "가능성",
-  },
-];
+// 채팅 화면이 활성 세션을 복원할 때 읽는 sessionStorage 키.
+// 마이페이지에서 상담 항목 클릭 시 이 키에 세션 id를 심어두면,
+// /chat 진입 시 기존 복원 로직이 해당 세션을 자동으로 연다(채팅 화면 무변경).
+const ACTIVE_CHAT_SESSION_STORAGE_KEY = "dodam.activeChatSessionId";
 
 const NICKNAME_MIN_LENGTH = 2;
 const NICKNAME_MAX_LENGTH = 100;
@@ -301,7 +290,11 @@ function MyPageContent() {
   const [pendingCompareDeleteId, setPendingCompareDeleteId] = useState(null);
   const [isClearingCompares, setIsClearingCompares] = useState(false);
   const [compareReloadKey, setCompareReloadKey] = useState(0);
-  const [chats, setChats] = useState(INIT_CHAT);
+  const [chats, setChats] = useState([]);
+  const [chatsLoading, setChatsLoading] = useState(false);
+  const [chatsError, setChatsError] = useState("");
+  const [chatActionError, setChatActionError] = useState("");
+  const [isClearingChats, setIsClearingChats] = useState(false);
 
   const liked = likedItems.map(toFavoritePolicyCard);
 
@@ -508,6 +501,93 @@ function MyPageContent() {
 
     return () => controller.abort();
   }, [isAuthenticated, isLoading, tab]);
+
+  // 상담 이력 탭: 실제 챗봇 세션 목록(최신 20건)을 조회한다.
+  useEffect(() => {
+    if (
+      typeof window === "undefined" ||
+      isLoading ||
+      !isAuthenticated ||
+      tab !== "chatHistory"
+    ) {
+      return;
+    }
+
+    const controller = new AbortController();
+
+    async function loadChatSessions() {
+      setChatsLoading(true);
+      setChatsError("");
+      setChatActionError("");
+
+      try {
+        const sessions = await chatApi.getSessions({
+          limit: 20,
+          signal: controller.signal,
+        });
+        if (!controller.signal.aborted) {
+          setChats(Array.isArray(sessions) ? sessions : []);
+        }
+      } catch (error) {
+        if (error?.code === "ERR_CANCELED") return;
+        setChats([]);
+        setChatsError(
+          getApiErrorMessage(error, "상담 이력을 불러오지 못했어요."),
+        );
+      } finally {
+        if (!controller.signal.aborted) {
+          setChatsLoading(false);
+        }
+      }
+    }
+
+    loadChatSessions();
+
+    return () => controller.abort();
+  }, [isAuthenticated, isLoading, tab]);
+
+  // 상담 항목 클릭 → 세션 id를 스토리지에 심고 /chat으로 이동(기존 복원 로직이 연다).
+  const openChatSession = (sessionId) => {
+    if (typeof window !== "undefined" && sessionId) {
+      window.sessionStorage.setItem(
+        ACTIVE_CHAT_SESSION_STORAGE_KEY,
+        String(sessionId),
+      );
+    }
+    router.push("/chat");
+  };
+
+  // 단건 삭제: 서버 삭제 성공 후 목록에서 제거.
+  const deleteChatSession = async (sessionId) => {
+    setChatActionError("");
+    try {
+      await chatApi.deleteSession(sessionId);
+      setChats((list) => list.filter((session) => session.id !== sessionId));
+    } catch (error) {
+      setChatActionError(
+        getApiErrorMessage(error, "상담 기록을 삭제하지 못했어요."),
+      );
+    }
+  };
+
+  // 전체 삭제: 현재 목록의 모든 세션을 다건 삭제.
+  const clearChatSessions = async () => {
+    if (isClearingChats || chats.length === 0) {
+      return;
+    }
+    setIsClearingChats(true);
+    setChatActionError("");
+    try {
+      await chatApi.bulkDeleteSessions(chats.map((session) => session.id));
+      setChats([]);
+    } catch (error) {
+      setChatActionError(
+        getApiErrorMessage(error, "상담 기록을 전체 삭제하지 못했어요."),
+      );
+    } finally {
+      setIsClearingChats(false);
+    }
+  };
 
   useEffect(() => {
     if (typeof window === "undefined" || isLoading || !isAuthenticated) {
@@ -1738,12 +1818,57 @@ function MyPageContent() {
             {/* 상담 이력 */}
             {tab === "chatHistory" && (
               <div style={{ maxWidth: MYPAGE_CONTENT_WIDTH, margin: "0 auto" }}>
-                {chats.length ? (
+                {chatsLoading ? (
+                  <div
+                    className="dd-card d-flex align-items-center gap-3"
+                    style={{ padding: 18 }}
+                  >
+                    <span
+                      className="spinner-border spinner-border-sm"
+                      aria-hidden="true"
+                    />
+                    <span className="dd-subtle" style={{ fontSize: 14 }}>
+                      상담 이력을 불러오는 중이에요.
+                    </span>
+                  </div>
+                ) : chatsError ? (
+                  <div
+                    className="dd-card-soft"
+                    style={{ padding: 18, borderColor: "var(--dd-amber-200)" }}
+                  >
+                    <div
+                      className="d-flex align-items-center gap-2 mb-2"
+                      style={{ color: "var(--dd-amber)" }}
+                    >
+                      <Icon name="CircleAlert" size={17} />
+                      <strong style={{ fontSize: 15 }}>
+                        상담 이력을 불러오지 못했어요
+                      </strong>
+                    </div>
+                    <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>
+                      {chatsError}
+                    </p>
+                  </div>
+                ) : chats.length ? (
                   <>
                     <ListHeader
                       text={`상담한 기록 ${chats.length}건`}
-                      onClear={() => setChats([])}
+                      onClear={clearChatSessions}
+                      disabled={isClearingChats}
                     />
+                    {chatActionError && (
+                      <div
+                        className="dd-card-soft mb-3 d-flex align-items-center gap-2"
+                        style={{
+                          padding: "12px 16px",
+                          borderColor: "var(--dd-amber-200)",
+                          color: "var(--dd-amber)",
+                        }}
+                      >
+                        <Icon name="CircleAlert" size={16} />
+                        <span style={{ fontSize: 14 }}>{chatActionError}</span>
+                      </div>
+                    )}
                     <div className="d-flex flex-column gap-2">
                       {chats.map((h) => (
                         <div
@@ -1751,9 +1876,17 @@ function MyPageContent() {
                           className="dd-card dd-card-hover d-flex align-items-center justify-content-between gap-3"
                           style={{ padding: 18 }}
                         >
-                          <Link
-                            href="/chat"
-                            className="d-flex align-items-center gap-3 text-decoration-none flex-grow-1"
+                          <button
+                            type="button"
+                            onClick={() => openChatSession(h.id)}
+                            className="d-flex align-items-center gap-3 flex-grow-1"
+                            style={{
+                              background: "none",
+                              border: 0,
+                              padding: 0,
+                              textAlign: "left",
+                              cursor: "pointer",
+                            }}
                           >
                             <span
                               className="dd-icon-tile dd-tile-blue"
@@ -1765,28 +1898,27 @@ function MyPageContent() {
                               <strong
                                 style={{ fontSize: 15, color: "var(--dd-ink)" }}
                               >
-                                {h.q}
+                                {h.title || "상담"}
                               </strong>
                               <div
-                                className="dd-pill dd-pill-stone"
+                                className="dd-pill dd-pill-blue"
                                 style={{ marginTop: 4 }}
                               >
-                                {h.tag}
+                                {h.status && h.status !== "ACTIVE"
+                                  ? h.status
+                                  : "상담 기록"}
                               </div>
                             </div>
-                          </Link>
+                          </button>
                           <div className="d-flex align-items-center gap-2">
                             <span
                               className="dd-subtle"
                               style={{ fontSize: 13 }}
                             >
-                              {h.date}
+                              {formatHistoryDate(h.lastMessageAt) ||
+                                "날짜 정보 없음"}
                             </span>
-                            <DelBtn
-                              onClick={() =>
-                                setChats((v) => v.filter((x) => x.id !== h.id))
-                              }
-                            />
+                            <DelBtn onClick={() => deleteChatSession(h.id)} />
                           </div>
                         </div>
                       ))}
@@ -1800,6 +1932,7 @@ function MyPageContent() {
                     desc="챗봇에게 우리 가족 상황을 물어보세요."
                     href="/chat"
                     cta="챗봇 상담하러 가기"
+                    ctaIcon="MessageCircle"
                   />
                 )}
               </div>

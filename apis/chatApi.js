@@ -197,9 +197,11 @@ const createSession = async ({ title, signal } = {}) => {
   };
 };
 
-const getSessions = async ({ page = 1, size = 30, signal } = {}) => {
+const getSessions = async ({ page = 1, size = 30, limit, signal } = {}) => {
+  // limit은 마이페이지 상담 이력처럼 개수를 제한할 때만 보낸다.
+  // 채팅 화면은 limit을 안 보내므로 백엔드가 전체를 반환(기존 동작 유지).
   const data = await axios.get(CHAT_SESSIONS_PATH, {
-    params: { page, size },
+    params: { page, size, ...(limit != null ? { limit } : {}) },
     signal,
     preserveResponse: true,
   });
