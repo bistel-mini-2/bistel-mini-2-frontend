@@ -207,6 +207,17 @@ export const getRecommendationResult = async (requestId) => {
   return normalizeRecommendationResult(data);
 };
 
+// 로그인 사용자의 완료된 추천 이력 목록(최신순).
+export const getRecommendationHistory = async (limit = 20, options = {}) => {
+  const data = await axios.get(RECOMMENDATIONS_BASE_PATH, {
+    params: { limit },
+    preserveResponse: true,
+    signal: options.signal,
+  });
+  const payload = data?.data ?? data;
+  return Array.isArray(payload?.items) ? payload.items : [];
+};
+
 // 추가질문 답변(또는 건너뛰기) 제출 → 추천 재실행.
 // answers: [{ question_text, answer }]. 빈 배열이면 건너뛰기로 처리된다.
 export const submitRecommendationAnswers = async (requestId, answers = []) => {
@@ -225,6 +236,7 @@ export const submitRecommendationAnswers = async (requestId, answers = []) => {
 const recommendationApi = {
   createRecommendationRequest,
   getRecommendationResult,
+  getRecommendationHistory,
   submitRecommendationAnswers,
 };
 
