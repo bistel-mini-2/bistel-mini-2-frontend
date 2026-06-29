@@ -127,7 +127,7 @@ export async function sendMessageStream({
       }
     }
 
-    buffer += decoder.decode();
+    buffer += decoder.decode().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     if (buffer.trim().length > 0) {
       const event = parseSseEventBlock(buffer);
       const isTerminal = dispatchEvent(event, { onToken, onDone, onError });
