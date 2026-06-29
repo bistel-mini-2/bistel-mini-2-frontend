@@ -1035,7 +1035,11 @@ export default function EligibilityResult({
     const field = normalizeFollowUpField(question);
     return Boolean(field) && field !== "region" && field !== "manual_confirmation";
   });
-  const confirmationQuestions = criteria.filter(isConfirmationCriterion);
+  const hasStructuredFollowUpQuestions =
+    actionableQuestions.length > 0 || manualFollowUpQuestions.length > 0;
+  const confirmationQuestions = hasStructuredFollowUpQuestions
+    ? []
+    : criteria.filter(isConfirmationCriterion);
   const confirmationQuestionKeys = new Set(
     confirmationQuestions.map((criterion) => criterion.label)
   );
