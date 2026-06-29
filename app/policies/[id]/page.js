@@ -427,6 +427,7 @@ export default function PolicyDetailPage() {
     toggle: toggleLike,
     pendingIds,
     error: favoriteError,
+    syncFromPolicy,
   } = useLiked();
 
   useEffect(() => {
@@ -443,6 +444,7 @@ export default function PolicyDetailPage() {
         const response = await policyApi.getPolicyDetail(policySlug, {
           signal: controller.signal,
         });
+        syncFromPolicy(response);
         setPolicy(toPolicyDetail(response, policySlug));
       } catch (requestError) {
         if (
@@ -466,7 +468,7 @@ export default function PolicyDetailPage() {
 
     loadPolicy();
     return () => controller.abort();
-  }, [policySlug, retryKey]);
+  }, [policySlug, retryKey, syncFromPolicy]);
 
   const aiSummarySlug = policy?.id || policySlug;
 
@@ -680,6 +682,7 @@ export default function PolicyDetailPage() {
             disabled={pendingIds.includes(likeSlug)}
             style={{ flex: "none" }}
             aria-pressed={liked}
+            aria-label={liked ? "관심 정책 해제" : "관심 정책 추가"}
           >
             <Icon name="Heart" size={16} fill={liked ? "currentColor" : "none"} />
             {liked ? "관심 정책" : "관심 등록"}

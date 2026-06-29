@@ -18,6 +18,11 @@ export default function PolicyCard({
 }) {
   if (!policy) return null;
   const detailHref = href || `/policies/${policy.id}`;
+  const handleToggleLike = (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    onToggleLike?.();
+  };
 
   return (
     <div className="dd-card dd-card-hover h-100 d-flex flex-column" style={{ padding: 20 }}>
@@ -57,7 +62,7 @@ export default function PolicyCard({
           <button
             type="button"
             className={"dd-heart-btn" + (liked ? " is-liked" : "")}
-            onClick={onToggleLike}
+            onClick={handleToggleLike}
             disabled={likeDisabled}
             aria-pressed={liked}
             aria-label={liked ? "관심 정책에서 빼기" : "관심 정책에 담기"}

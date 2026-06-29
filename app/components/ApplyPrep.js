@@ -55,6 +55,7 @@ export default function ApplyPrep({ policyId, onAction }) {
           onClick={() => toggleLike(policyId)}
           disabled={pendingIds.includes(policyId)}
           aria-pressed={saved}
+          aria-label={saved ? "관심 정책 해제" : "관심 정책 추가"}
         >
           <Icon name="Heart" size={15} fill={saved ? "currentColor" : "none"} />
           {saved ? "관심 저장됨" : "관심 저장"}
