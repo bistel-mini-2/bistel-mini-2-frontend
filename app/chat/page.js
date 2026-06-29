@@ -2,6 +2,9 @@
 
 import { useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import ReactMarkdown from "react-markdown";
+import remarkBreaks from "remark-breaks";
+import remarkGfm from "remark-gfm";
 import chatApi, { normalizeAssistantMessage } from "@/apis/chatApi";
 import { sendMessageStream } from "@/apis/chatStreamClient";
 import eligibilityApi from "@/apis/eligibilityApi";
@@ -81,6 +84,7 @@ const makeId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16)
 const getErrorMessage = (error) => error?.message || "메시지를 보내지 못했어요. 잠시 후 다시 시도해주세요.";
 const ACTIVE_CHAT_SESSION_STORAGE_KEY = "dodam.activeChatSessionId";
 const SESSION_RESTORE_TIMEOUT_MS = 8000;
+const CHAT_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
 
 const readStoredActiveSessionId = () => {
   if (typeof window === "undefined") return null;
@@ -773,6 +777,34 @@ function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {
   return null;
 }
 
+function ChatMarkdown({ content, variant = "assistant", isStreaming = false }) {
+  if (!content) return null;
+
+  return (
+    <div className={`dd-chat-markdown dd-chat-markdown-${variant}`}>
+      <ReactMarkdown
+        remarkPlugins={CHAT_MARKDOWN_REMARK_PLUGINS}
+        skipHtml
+        components={{
+          a: (props) => {
+            const { node, ...linkProps } = props;
+            void node;
+            return <a {...linkProps} target="_blank" rel="noreferrer" />;
+          },
+          p: (props) => {
+            const { node, ...paragraphProps } = props;
+            void node;
+            return <p {...paragraphProps} />;
+          },
+        }}
+      >
+        {content}
+      </ReactMarkdown>
+      {isStreaming && <span className="dd-cursor" />}
+    </div>
+  );
+}
+
 function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePolicyId }) {
   const policySlug = getPolicySlug(message.policies?.[0]);
   const actions = message.actions || [];
@@ -789,10 +821,7 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePo
       </span>
       <div className="dd-bubble-ai" style={{ flex: 1, minWidth: 0, maxWidth: 660 }}>
         {message.content && (
-          <p className="dd-aitext">
-            {message.content}
-            {isStreaming && <span className="dd-cursor" />}
-          </p>
+          <ChatMarkdown content={message.content} isStreaming={isStreaming} />
         )}
 
         {!isStreaming && (
@@ -1808,7 +1837,9 @@ export default function ChatPage() {
                 {messages.map((message) =>
                   message.role === "user" ? (
                     <div key={message.id} style={{ display: "flex", justifyContent: "flex-end" }}>
-                      <div className="dd-bubble-user">{message.content}</div>
+                      <div className="dd-bubble-user">
+                        <ChatMarkdown content={message.content} variant="user" />
+                      </div>
                     </div>
                   ) : (
                     <AssistantMessage
