@@ -66,7 +66,9 @@ export const FAMILY_ENUM_VALUES = Object.fromEntries(
   ])
 );
 
-// 데모 기본 입력값 (요약·분석에서 사용)
+// fallback 기본값.
+// 저장된 가족 프로필이 없거나 조회에 실패했을 때만 입력 폼의 초기값으로 쓰인다.
+// (데모용 고정 데이터가 아니라, 프로필 미존재 시의 안전한 시작값)
 export const DEFAULT_FAMILY = {
   name: "보호자",
   stage: "newborn",
