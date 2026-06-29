@@ -1272,11 +1272,21 @@ export default function ChatPage() {
       }
 
       const sourceRefId = getRecommendationSourceRefId(policy, sourceMessage);
+      const userConditions =
+        policy.selected_conditions ||
+        policy.selectedConditions ||
+        policy.merged_condition_json ||
+        policy.mergedConditionJson ||
+        policy.user_conditions ||
+        policy.userConditions ||
+        {};
       const base = {
         requestId: "",
         policyId,
         policyName,
+        sourceType: "RECOMMENDATION_RESULT",
         sourceRefId,
+        userConditions,
         status: REQUEST_STATUS.PROCESSING,
         questions: [],
         criteria: [],
@@ -1293,14 +1303,7 @@ export default function ChatPage() {
           policyId,
           sourceType: "RECOMMENDATION_RESULT",
           sourceRefId,
-          userConditions:
-            policy.selected_conditions ||
-            policy.selectedConditions ||
-            policy.merged_condition_json ||
-            policy.mergedConditionJson ||
-            policy.user_conditions ||
-            policy.userConditions ||
-            {},
+          userConditions,
           rawQuery: `${policyName} 지원가능성 분석`,
         });
         const requestId = getEligibilityRequestId(response);
@@ -1330,17 +1333,21 @@ export default function ChatPage() {
       if (!activeEligibility?.requestId || sending || restoring) return;
 
       const text = typeof answer === "string" ? answer : answer?.text || answer?.raw_answer || "";
-      const payload =
-        typeof answer === "string"
-          ? { raw_answer: answer }
-          : {
-              raw_answer: answer?.raw_answer || text,
-              answers: answer?.answers || {},
-            };
 
-      if (!payload.raw_answer && Object.keys(payload.answers || {}).length === 0) {
-        payload.raw_answer = "잘 모르겠어요";
+      // answers를 yes/no 확인(manual_confirmations)과 조건값(userConditions 병합)으로 분리한다.
+      // SlotDock의 "잘 모르겠어요" 선택은 "__UNKNOWN__"으로 오며, userConditions에서 제외한다.
+      const rawAnswers = answer?.answers || {};
+      const manualConfirmations = [];
+      const conditionUpdates = {};
+      for (const [key, value] of Object.entries(rawAnswers)) {
+        if (value === "__UNKNOWN__") continue;
+        if (["yes", "no", "unknown"].includes(value)) {
+          manualConfirmations.push({ question: key, answer: value });
+        } else {
+          conditionUpdates[key] = value;
+        }
       }
+      const mergedUserConditions = { ...(activeEligibility.userConditions || {}), ...conditionUpdates };
 
       const userMessageId = makeId("user-eligibility");
       if (text) {
@@ -1358,8 +1365,29 @@ export default function ChatPage() {
       }));
 
       try {
-        await eligibilityApi.submitAnswers(activeEligibility.requestId, payload);
-        await fetchEligibilityResult(activeEligibility.requestId, activeEligibility);
+        const response = await eligibilityApi.createRequest({
+          policyId: activeEligibility.policyId,
+          sourceType: activeEligibility.sourceType,
+          sourceRefId: activeEligibility.sourceRefId,
+          userConditions: mergedUserConditions,
+          rawQuery: text,
+          manualConfirmations,
+        });
+        const requestId = getEligibilityRequestId(response);
+        if (!requestId) {
+          throw new Error("지원가능성 분석 요청 번호를 받지 못했어요.");
+        }
+        const nextEligibility = {
+          ...activeEligibility,
+          requestId: String(requestId),
+          userConditions: mergedUserConditions,
+          status: REQUEST_STATUS.PROCESSING,
+          questions: [],
+          error: "",
+          loadingMessage: "입력한 답변을 반영해 지원 가능성을 다시 확인하고 있어요.",
+        };
+        setActiveEligibility(nextEligibility);
+        await fetchEligibilityResult(String(requestId), nextEligibility);
       } catch (nextError) {
         addError(getApiErrorMessage(nextError, "지원가능성 분석 답변을 제출하지 못했어요."), text);
       } finally {
@@ -1509,6 +1537,37 @@ export default function ChatPage() {
           const withoutStream = prev.filter((message) => message.id !== streamId);
           return [...withoutStream, assistantMessage];
         });
+        const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
+        if (eligibilityResult) {
+          setActiveEligibility((prev) => {
+            if (!prev) {
+              // 일반 채팅 응답으로 eligibility_result가 직접 내려온 경우
+              return {
+                requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || ""),
+                policyId: eligibilityResult.policy_id || eligibilityResult.policyId || "",
+                policyName: eligibilityResult.policy_name || eligibilityResult.policyName || "",
+                sourceType: eligibilityResult.source_type || eligibilityResult.sourceType || "POLICY_DETAIL",
+                sourceRefId: eligibilityResult.source_ref_id || eligibilityResult.sourceRefId || null,
+                userConditions: eligibilityResult.user_conditions || eligibilityResult.userConditions || {},
+                status: eligibilityResult.status || REQUEST_STATUS.COMPLETED,
+                questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
+                criteria: eligibilityResult.criteria || [],
+                result: eligibilityResult,
+                error: "",
+                loadingMessage: "",
+              };
+            }
+            return {
+              ...prev,
+              requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || prev.requestId),
+              status: eligibilityResult.status || prev.status,
+              questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
+              criteria: eligibilityResult.criteria || [],
+              result: eligibilityResult,
+              error: "",
+            };
+          });
+        }
       },
       onError: () => { streamFailed = true; clearProgress(); },
     });
@@ -1546,39 +1605,23 @@ export default function ChatPage() {
         addError("로그인 후 챗봇 상담을 이용할 수 있어요.", text);
         return;
       }
-      const hasEligibilityFollowUp =
-        activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
-        activeEligibility?.questions?.length > 0 ||
-        hasEligibilityClarificationContext(activeEligibility);
-      if (hasEligibilityFollowUp && isEligibilityClarificationQuestion(text)) {
-        setInput("");
-        setMessages((prev) => [
-          ...prev,
-          { id: makeId("user-eligibility-question"), role: "user", content: text },
-          {
-            id: makeId("assistant-eligibility-question"),
-            role: "assistant",
-            content: buildEligibilityClarificationMessage(activeEligibility),
-            disclaimer: false,
-          },
-        ]);
-        return;
-      }
-      if (
-        (activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
-          activeEligibility?.questions?.length > 0) &&
-        !hasRecommendIntent(text)
-      ) {
-        setInput("");
-        await submitEligibilityAnswer(text);
-        return;
-      }
       try {
         if (!isRecommendRef.current) {
           isRecommendRef.current = hasRecommendIntent(text);
         }
         if (isRecommendRef.current) {
           setActiveEligibility(null);
+        } else if (
+          activeEligibility?.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ||
+          activeEligibility?.questions?.length > 0
+        ) {
+          setActiveEligibility((prev) => ({
+            ...prev,
+            status: REQUEST_STATUS.PROCESSING,
+            questions: [],
+            error: "",
+            loadingMessage: "입력한 답변을 반영해 지원 가능성을 다시 확인하고 있어요.",
+          }));
         }
         const sessionId = await ensureSession(text);
         await finalizeSend(sessionId, text);
@@ -1598,7 +1641,6 @@ export default function ChatPage() {
       isAuthenticated,
       restoring,
       sending,
-      submitEligibilityAnswer,
     ]
   );
 

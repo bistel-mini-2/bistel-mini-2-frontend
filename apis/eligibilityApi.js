@@ -8,6 +8,7 @@ const createRequest = ({
   sourceRefId,
   sourceType,
   rawQuery,
+  manualConfirmations,
 }, config = {}) =>
   axios.post(
     ELIGIBILITY_REQUESTS_PATH,
@@ -19,6 +20,7 @@ const createRequest = ({
         sourceRefId ||
         (sourceType === "RECOMMENDATION_RESULT" ? null : policyId),
       raw_query: rawQuery || null,
+      manual_confirmations: manualConfirmations || [],
     },
     config
   );
@@ -26,17 +28,9 @@ const createRequest = ({
 const getResult = (requestId, config = {}) =>
   axios.get(`${ELIGIBILITY_REQUESTS_PATH}/${requestId}`, config);
 
-const submitAnswers = (requestId, payload = {}, config = {}) =>
-  axios.post(
-    `${ELIGIBILITY_REQUESTS_PATH}/${encodeURIComponent(requestId)}/answers`,
-    payload,
-    config
-  );
-
 const eligibilityApi = {
   createRequest,
   getResult,
-  submitAnswers,
 };
 
 export default eligibilityApi;
