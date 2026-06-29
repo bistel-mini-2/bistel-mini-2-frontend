@@ -196,7 +196,7 @@ export default function HomePage() {
 
         {/* ===== 신뢰·면책 배너 ===== */}
         <section style={{ background: "var(--dd-cream)" }}>
-          <div className="dd-shell" style={{ paddingBottom: 64 }}>
+          <div className="dd-shell" style={{ paddingTop: 64, paddingBottom: 64 }}>
             <div
               className="d-flex flex-column flex-sm-row align-items-start align-items-sm-center gap-3"
               style={{ borderRadius: 24, padding: 32, background: "linear-gradient(135deg, #ffe0e8, #e0f2fe)" }}

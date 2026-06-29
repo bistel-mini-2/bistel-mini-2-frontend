@@ -9,7 +9,10 @@
 import { Suspense, startTransition, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { getRecommendationResult } from "@/apis/recommendationApi";
+import {
+  getRecommendationResult,
+  submitRecommendationAnswers,
+} from "@/apis/recommendationApi";
 import eligibilityApi from "@/apis/eligibilityApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
 import Header from "@/app/components/Header";
@@ -365,6 +368,117 @@ function LoadingState() {
         결과가 준비되면 자동으로 보여드릴게요. 보통 잠시만 기다리면 완료됩니다.
       </p>
     </div>
+  );
+}
+
+function FollowUpGate({ questions, onSubmit, onSkip, submitting }) {
+  const visibleQuestions = questions.slice(0, 2);
+  const [answers, setAnswers] = useState({});
+
+  // 답변을 하나라도 입력했는지(빈 답변으로 "다시 추천" 누르면 건너뛰기와 같아지는 혼란 방지).
+  const hasAnyAnswer = visibleQuestions.some(
+    (question) => (answers[question] || "").trim()
+  );
+
+  // follow_up 상태인데 질문이 비어 있는 예외 상황: 빈 화면 대신 결과로 진행할 수 있게 안내.
+  if (visibleQuestions.length === 0) {
+    return (
+      <div className="dd-card dd-card-lg mt-4 text-center" style={{ padding: "44px 24px" }}>
+        <span className="dd-icon-tile dd-tile-rose mx-auto">
+          <Icon name="Sparkles" size={24} />
+        </span>
+        <h1 className="dd-title mt-3" style={{ fontSize: 26 }}>
+          추천 결과를 보여드릴게요
+        </h1>
+        <p className="mb-0 mt-2" style={{ color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
+          추가로 확인할 정보가 없어요. 바로 결과를 확인해 주세요.
+        </p>
+        <button
+          type="button"
+          className="dd-btn dd-btn-coral mt-4"
+          onClick={onSkip}
+          disabled={submitting}
+        >
+          <Icon name={submitting ? "LoaderCircle" : "ArrowRight"} size={16} /> 결과 보기
+        </button>
+      </div>
+    );
+  }
+
+  const handleSubmit = (event) => {
+    event.preventDefault();
+    const payload = visibleQuestions
+      .map((question) => ({
+        question_text: question,
+        answer: (answers[question] || "").trim(),
+      }))
+      .filter((item) => item.answer);
+    onSubmit(payload);
+  };
+
+  return (
+    <form
+      className="dd-card dd-card-lg mt-4"
+      style={{ padding: "40px 28px" }}
+      onSubmit={handleSubmit}
+    >
+      <span className="dd-pill dd-pill-amber">
+        <Icon name="MessageCircle" size={14} /> 추가 정보가 필요해요
+      </span>
+      <h1 className="dd-title mt-3" style={{ fontSize: 26 }}>
+        몇 가지만 확인하면 더 정확해져요
+      </h1>
+      <p className="mt-2 mb-0" style={{ color: "var(--dd-stone-600)", lineHeight: 1.7 }}>
+        아래에 답해주시면 그 정보를 반영해 다시 추천해드릴게요. 건너뛰어도 결과는 볼 수 있어요.
+      </p>
+
+      <div className="d-flex flex-column gap-3 mt-4">
+        {visibleQuestions.map((question) => (
+          <label key={question} className="d-flex flex-column gap-2">
+            <span className="fw-semibold" style={{ color: "var(--dd-ink)" }}>
+              {question}
+            </span>
+            <input
+              type="text"
+              className="dd-input"
+              value={answers[question] || ""}
+              onChange={(event) =>
+                setAnswers((current) => ({
+                  ...current,
+                  [question]: event.target.value,
+                }))
+              }
+              placeholder="답변을 입력해주세요"
+              disabled={submitting}
+            />
+          </label>
+        ))}
+      </div>
+
+      <div className="d-flex flex-wrap gap-2 mt-4">
+        <button
+          type="submit"
+          className="dd-btn dd-btn-coral"
+          disabled={submitting || !hasAnyAnswer}
+        >
+          <Icon name={submitting ? "LoaderCircle" : "ArrowRight"} size={16} />
+          {submitting ? "반영 중..." : "답변 반영하고 다시 추천"}
+        </button>
+        <button
+          type="button"
+          className="dd-btn dd-btn-ghost"
+          onClick={onSkip}
+          disabled={submitting}
+        >
+          그냥 결과 보기
+        </button>
+      </div>
+      {!hasAnyAnswer && (
+        <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 13 }}>
+          답변을 입력하면 반영해 다시 추천해드려요. 그냥 보려면 아래 &lsquo;그냥 결과 보기&rsquo;를 눌러주세요.
+        </p>
+      )}
+    </form>
   );
 }
 
@@ -729,6 +843,7 @@ function RecommendResultContent() {
   const [recommendationInput, setRecommendationInput] = useState(null);
   const [pendingPolicyId, setPendingPolicyId] = useState("");
   const [eligibilityError, setEligibilityError] = useState("");
+  const [submittingAnswers, setSubmittingAnswers] = useState(false);
 
   // 추천 요청 결과 polling.
   useEffect(() => {
@@ -783,6 +898,17 @@ function RecommendResultContent() {
             status: "error",
             result,
             errorMessage: result.errorMessage || FALLBACK_RESULT_ERROR_MESSAGE,
+            errorStatus: null,
+          });
+          return;
+        }
+
+        // 추가질문 게이트: 결과 대신 답변 폼을 띄운다.
+        if (result.status === "follow_up") {
+          setViewState({
+            status: "follow_up",
+            result,
+            errorMessage: "",
             errorStatus: null,
           });
           return;
@@ -910,6 +1036,36 @@ function RecommendResultContent() {
     }
   };
 
+  // 추가질문 답변(또는 건너뛰기) 제출 → 재실행 → 결과 폴링 재개.
+  const submitAnswers = async (answers) => {
+    if (submittingAnswers) {
+      return;
+    }
+
+    setSubmittingAnswers(true);
+    try {
+      await submitRecommendationAnswers(requestId, answers);
+      setViewState((current) => ({ ...current, status: "loading" }));
+      setRetryKey((current) => current + 1);
+    } catch (error) {
+      if (error?.status === 401) {
+        const params = new URLSearchParams({
+          next: `/recommend/result${requestId ? `?requestId=${requestId}` : ""}`,
+        });
+        router.push(`/login?${params.toString()}`);
+        return;
+      }
+      setViewState({
+        status: "error",
+        result: null,
+        errorMessage: getResultErrorMessage(error),
+        errorStatus: error?.status || null,
+      });
+    } finally {
+      setSubmittingAnswers(false);
+    }
+  };
+
   const recommendations = useMemo(
     () =>
       (viewState.result?.recommendations || []).map((recommendation, index) =>
@@ -930,7 +1086,7 @@ function RecommendResultContent() {
     <div className="dd-page">
       <Header />
       <main className="dd-shell" style={{ paddingTop: 32, paddingBottom: 64 }}>
-        <StepIndicator current={2} />
+        <StepIndicator current={viewState.status === "done" ? 3 : 2} />
 
         {!requestId && (
           <ErrorState
@@ -942,6 +1098,15 @@ function RecommendResultContent() {
         )}
 
         {requestId && viewState.status === "loading" && <LoadingState />}
+
+        {requestId && viewState.status === "follow_up" && (
+          <FollowUpGate
+            questions={viewState.result?.followUpQuestions || []}
+            onSubmit={submitAnswers}
+            onSkip={() => submitAnswers([])}
+            submitting={submittingAnswers}
+          />
+        )}
 
         {requestId && viewState.status === "error" && (
           <ErrorState

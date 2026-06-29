@@ -57,8 +57,10 @@ const normalizeRecommendationStatus = (status, hasRecommendations) => {
     return "done";
   }
 
-  if (value === "FOLLOW_UP_REQUIRED") {
-    return "done";
+  // 추가질문 게이트: 결과 대신 답변 폼을 띄우기 위해 별도 상태로 노출한다.
+  // 폴링 응답은 "follow_up", 원시 요청 상태는 "FOLLOW_UP_REQUIRED"로 올 수 있다.
+  if (value === "FOLLOW_UP" || value === "FOLLOW_UP_REQUIRED") {
+    return "follow_up";
   }
 
   if (["FAILED", "FAILURE", "ERROR"].includes(value)) {
@@ -205,9 +207,37 @@ export const getRecommendationResult = async (requestId) => {
   return normalizeRecommendationResult(data);
 };
 
+// 로그인 사용자의 완료된 추천 이력 목록(최신순).
+export const getRecommendationHistory = async (limit = 20, options = {}) => {
+  const data = await axios.get(RECOMMENDATIONS_BASE_PATH, {
+    params: { limit },
+    preserveResponse: true,
+    signal: options.signal,
+  });
+  const payload = data?.data ?? data;
+  return Array.isArray(payload?.items) ? payload.items : [];
+};
+
+// 추가질문 답변(또는 건너뛰기) 제출 → 추천 재실행.
+// answers: [{ question_text, answer }]. 빈 배열이면 건너뛰기로 처리된다.
+export const submitRecommendationAnswers = async (requestId, answers = []) => {
+  if (!requestId) {
+    const error = new Error("추천 요청 ID를 확인하지 못했어요.");
+    error.code = "RECOMMENDATION_REQUEST_ID_REQUIRED";
+    throw error;
+  }
+
+  return axios.post(
+    `${RECOMMENDATIONS_BASE_PATH}/${encodeURIComponent(requestId)}/answers`,
+    { answers: Array.isArray(answers) ? answers : [] }
+  );
+};
+
 const recommendationApi = {
   createRecommendationRequest,
   getRecommendationResult,
+  getRecommendationHistory,
+  submitRecommendationAnswers,
 };
 
 export default recommendationApi;
