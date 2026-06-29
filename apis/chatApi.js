@@ -215,7 +215,7 @@ const deleteSession = (sessionId) =>
 
 const bulkDeleteSessions = (sessionIds) =>
   axios.post(`${CHAT_SESSIONS_PATH}/bulk-delete`, {
-    chat_session_ids: sessionIds.map((sessionId) => Number(sessionId)),
+    chat_session_ids: sessionIds,
   });
 
 const sendMessage = async ({ sessionId, content, signal }) => {

@@ -1358,16 +1358,15 @@ export default function ChatPage() {
       }));
 
       try {
-        const response = await eligibilityApi.submitAnswers(activeEligibility.requestId, payload);
-        const result = response?.status ? response : await eligibilityApi.getResult(activeEligibility.requestId);
-        updateEligibilityFromResult(activeEligibility, result);
+        await eligibilityApi.submitAnswers(activeEligibility.requestId, payload);
+        await fetchEligibilityResult(activeEligibility.requestId, activeEligibility);
       } catch (nextError) {
         addError(getApiErrorMessage(nextError, "지원가능성 분석 답변을 제출하지 못했어요."), text);
       } finally {
         setSending(false);
       }
     },
-    [activeEligibility, addError, restoring, sending, updateEligibilityFromResult]
+    [activeEligibility, addError, fetchEligibilityResult, restoring, sending]
   );
 
   const submitRecommendationFilling = useCallback(
@@ -1407,8 +1406,8 @@ export default function ChatPage() {
         });
 
         let result = await getRecommendationResult(requestId);
-        for (let attempt = 0; result.status === "loading" && attempt < 5; attempt += 1) {
-          await wait(1200);
+        for (let attempt = 0; result.status === "loading" && attempt < 15; attempt += 1) {
+          await wait(2000);
           result = await getRecommendationResult(requestId);
         }
 

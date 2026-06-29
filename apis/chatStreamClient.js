@@ -114,7 +114,7 @@ export async function sendMessageStream({
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
 
       let boundary = buffer.indexOf("\n\n");
       while (boundary !== -1) {
