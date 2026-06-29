@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
 import eligibilityApi from "@/apis/eligibilityApi";
@@ -855,6 +856,10 @@ export default function PolicyDetailPage() {
               </div>
             </div>
           )}
+          {/* 유사 정책: 벡터+에이전트 기반(규칙 기반 '함께 보면 좋은 정책'과 함께 노출). */}
+          <div className="col-12 col-lg-4">
+            <SimilarPolicies policySlug={policy.id || policySlug} limit={4} />
+          </div>
         </div>
 
         <div className="dd-card mt-4" style={{ padding: 22 }}>

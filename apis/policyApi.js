@@ -55,6 +55,25 @@ const getPolicyAiSummary = (
     });
 };
 
-const policyApi = { getPolicies, getPolicyDetail, getPolicyAiSummary };
+// 기준 정책과 유사한 정책 목록(벡터+에이전트). items 배열만 반환한다.
+const getSimilarPolicies = async (policySlug, { limit = 4, signal } = {}) => {
+  const data = await axios.get(
+    `/api/v1/policies/${encodeURIComponent(policySlug)}/similar`,
+    {
+      params: { limit },
+      signal,
+      preserveResponse: true,
+    }
+  );
+  const payload = data?.data ?? data;
+  return Array.isArray(payload?.items) ? payload.items : [];
+};
+
+const policyApi = {
+  getPolicies,
+  getPolicyDetail,
+  getPolicyAiSummary,
+  getSimilarPolicies,
+};
 
 export default policyApi;

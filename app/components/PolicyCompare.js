@@ -5,10 +5,10 @@
 // /compare 페이지와 상세 모달이 함께 사용한다.
 // =========================================================================
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import Icon from "@/app/components/Icon";
 import PolicySelect from "@/app/components/PolicySelect";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import { POLICIES, getPolicy } from "@/app/data/policies";
 import compareApi from "@/apis/compareApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
@@ -319,7 +319,6 @@ export default function PolicyCompare({
 
   const policyA = compareResult?.policy_a || null;
   const policyB = compareResult?.policy_b || null;
-  const relatedPolicies = compareResult?.related_policies || [];
   const extraOptions = useMemo(
     () =>
       [
@@ -440,32 +439,15 @@ export default function PolicyCompare({
         </div>
       )}
 
-      {!errorMessage && relatedPolicies.length > 0 && (
-        <div className="dd-card-soft" style={{ padding: 18 }}>
-          <SectionTitle
-            icon="Sparkles"
-            title="함께 확인하면 좋은 정책"
-            desc="비교한 정책과 조건이나 분야가 가까운 정책입니다."
-          />
-          <div className="row g-2">
-            {relatedPolicies.map((policy) => (
-              <div className="col-12 col-md-4" key={policy.slug || policy.policy_id}>
-                <Link
-                  href={`/policies/${policy.slug}`}
-                  className="dd-card dd-card-hover text-decoration-none d-flex align-items-center gap-2 h-100"
-                  style={{ padding: 12, color: "var(--dd-ink)" }}
-                >
-                  <span className="dd-icon-tile dd-tile-amber" style={{ width: 34, height: 34, borderRadius: 12, flex: "none" }}>
-                    <Icon name="FileText" size={15} />
-                  </span>
-                  <span className="fw-semibold" style={{ fontSize: 13, lineHeight: 1.4 }}>
-                    {policy.name}
-                  </span>
-                </Link>
-              </div>
-            ))}
-          </div>
-        </div>
+      {/* 유사 정책: 비교한 A 정책 기준 벡터+에이전트(규칙 기반 related 섹션 대체). */}
+      {!errorMessage && policyA?.slug && (
+        <SimilarPolicies
+          policySlug={policyA.slug}
+          limit={4}
+          layout="grid"
+          sticky={false}
+          title="함께 확인하면 좋은 비슷한 정책"
+        />
       )}
 
       <DisclaimerNote />

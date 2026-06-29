@@ -19,6 +19,7 @@ import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import StepIndicator from "@/app/components/StepIndicator";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import {
   DEFAULT_FAMILY,
   FAMILY_PROFILE_KEY,
@@ -680,6 +681,8 @@ function AiComment({ comment }) {
 function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
   const { policy, match, detailHref, rank, candidateStatus, matchedLabels } = item;
   const hasPolicyDetail = policy.id && !policy.id.startsWith("recommendation-");
+  // 유사 정책은 사용자가 버튼을 눌렀을 때만 로드한다(카드 4개 동시 LLM 호출 방지).
+  const [showSimilar, setShowSimilar] = useState(false);
 
   return (
     <article
@@ -802,7 +805,32 @@ function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
               {analyzing ? "분석 요청 중..." : "지원 가능성 분석"}
             </button>
           )}
+          {hasPolicyDetail && (
+            <button
+              type="button"
+              className="dd-btn dd-btn-ghost dd-btn-sm"
+              onClick={() => setShowSimilar((current) => !current)}
+              aria-expanded={showSimilar}
+            >
+              <Icon name={showSimilar ? "ChevronUp" : "Sparkles"} size={15} />
+              유사 정책
+            </button>
+          )}
         </div>
+
+        {/* 유사 정책: 버튼 토글 시에만 마운트되어 그때 로드된다. */}
+        {hasPolicyDetail && showSimilar && (
+          <div className="mt-3">
+            <SimilarPolicies
+              policySlug={policy.id}
+              limit={3}
+              layout="sidebar"
+              sticky={false}
+              showEmpty
+              title="이 정책과 비슷한 정책"
+            />
+          </div>
+        )}
       </div>
     </article>
   );
@@ -810,7 +838,9 @@ function RecommendationCard({ item, onAnalyze, analyzing, analyzeDisabled }) {
 
 function RecommendationGrid({ recommendations, onAnalyze, pendingPolicyId }) {
   return (
-    <div className="row g-4 mt-1 align-items-stretch">
+    // align-items-start: 같은 줄 카드의 높이를 묶지 않는다. 한 카드에서 '유사 정책'을
+    // 펼쳐도 짝 카드가 빈 공간으로 늘어나지 않도록(각 카드는 자기 콘텐츠 높이만).
+    <div className="row g-4 mt-1 align-items-start">
       {recommendations.map((item) => (
         <div className="col-12 col-md-6" key={item.key}>
           <RecommendationCard
