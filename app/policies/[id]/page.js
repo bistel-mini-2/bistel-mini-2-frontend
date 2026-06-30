@@ -8,6 +8,7 @@ import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
+import eligibilityApi from "@/apis/eligibilityApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
 import {
   getAiStatusPillClass,
@@ -416,6 +417,8 @@ export default function PolicyDetailPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [tab, setTab] = useState("target");
   const [summaryRetryKey, setSummaryRetryKey] = useState(0);
+  const [eligibilityPending, setEligibilityPending] = useState(false);
+  const [eligibilityError, setEligibilityError] = useState("");
   const [aiSummaryState, setAiSummaryState] = useState({
     status: "READY",
     summary: null,
@@ -611,8 +614,49 @@ export default function PolicyDetailPage() {
     );
   };
 
-  const handleEligibility = () => {
-    router.push(`/policies/${encodeURIComponent(likeSlug)}/eligibility?source=policy-detail`);
+  const handleEligibility = async () => {
+    if (!likeSlug || eligibilityPending) {
+      return;
+    }
+
+    setEligibilityPending(true);
+    setEligibilityError("");
+
+    try {
+      const response = await eligibilityApi.createRequest({
+        policyId: likeSlug,
+        sourceType: "POLICY_DETAIL",
+        sourceRefId: likeSlug,
+      });
+      const eligibilityRequestId = response?.request_id || response?.requestId;
+
+      if (!eligibilityRequestId) {
+        throw new Error("분석 요청 번호를 받지 못했어요.");
+      }
+
+      const params = new URLSearchParams({
+        requestId: String(eligibilityRequestId),
+        source: "policy-detail",
+      });
+
+      router.push(
+        `/policies/${encodeURIComponent(likeSlug)}/eligibility?${params.toString()}`
+      );
+    } catch (error) {
+      if (error?.status === 401) {
+        const params = new URLSearchParams({
+          next: `/policies/${encodeURIComponent(likeSlug)}`,
+        });
+        router.push(`/login?${params.toString()}`);
+        return;
+      }
+
+      setEligibilityError(
+        getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
+      );
+    } finally {
+      setEligibilityPending(false);
+    }
   };
 
   const handleCompareWithRelated = (relatedPolicyId) => {
@@ -816,7 +860,7 @@ export default function PolicyDetailPage() {
         <div className="dd-card mt-4" style={{ padding: 22 }}>
           <p className="fw-bold mb-3" style={{ fontSize: 16, color: "var(--dd-ink)" }}>다음으로 무엇을 할까요?</p>
           <div className="d-flex flex-wrap gap-2">
-            <button type="button" className="dd-btn dd-btn-blue" onClick={handleEligibility}>
+            <button type="button" className="dd-btn dd-btn-blue" onClick={handleEligibility} disabled={eligibilityPending}>
               <Icon name="ShieldCheck" size={17} /> 지원 가능성 분석
             </button>
             {policy.url && (
@@ -828,6 +872,11 @@ export default function PolicyDetailPage() {
               <Icon name="MessageCircle" size={17} /> AI 챗봇에 질문하기
             </Link>
           </div>
+          {eligibilityError && (
+            <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
+              <Icon name="CircleAlert" size={13} /> {eligibilityError}
+            </p>
+          )}
           <div className="mt-3"><DisclaimerNote /></div>
         </div>
       </main>

@@ -50,6 +50,43 @@ const getRecommendationItems = (data) => {
   ]);
 };
 
+const getSelectedConditions = (data) => {
+  const payload = getPayload(data);
+  const parsedQuery =
+    payload?.parsed_query_json ||
+    payload?.parsedQueryJson ||
+    data?.parsed_query_json ||
+    data?.parsedQueryJson ||
+    data?.data?.parsed_query_json ||
+    data?.data?.parsedQueryJson;
+
+  return (
+    payload?.selected_conditions ||
+    payload?.selectedConditions ||
+    parsedQuery?.selected_conditions ||
+    parsedQuery?.selectedConditions ||
+    data?.selected_conditions ||
+    data?.selectedConditions ||
+    data?.data?.selected_conditions ||
+    data?.data?.selectedConditions ||
+    null
+  );
+};
+
+const getRawQuery = (data) => {
+  const payload = getPayload(data);
+
+  return (
+    payload?.raw_query ||
+    payload?.rawQuery ||
+    data?.raw_query ||
+    data?.rawQuery ||
+    data?.data?.raw_query ||
+    data?.data?.rawQuery ||
+    ""
+  );
+};
+
 const normalizeRecommendationStatus = (status, hasRecommendations) => {
   const value = String(status || "").trim().toUpperCase();
 
@@ -152,6 +189,8 @@ const normalizeRecommendationResult = (data) => {
     status,
     rawStatus,
     recommendations,
+    selectedConditions: getSelectedConditions(data),
+    rawQuery: getRawQuery(data),
     followUpQuestions: normalizeFollowUpQuestions(data, recommendations),
     reasonSummary:
       payload?.reason_summary ||
