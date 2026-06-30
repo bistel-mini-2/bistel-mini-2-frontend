@@ -54,7 +54,7 @@ const QUICK_ACTIONS = [
     title: "정책 비교",
     description: "비슷한 두 정책, 뭐가 더 맞을까요?",
     icon: "GitCompare",
-    prompt: "비슷한 육아 지원 정책들을 비교해줘.",
+    prompt: "아동수당과 부모급여 두 정책 비교해줘.",
     tone: "amber",
   },
   {

@@ -100,7 +100,10 @@ function LoadingSkeleton() {
     <div className="row g-4 mt-0" aria-label="정책 목록을 불러오는 중">
       {Array.from({ length: 6 }, (_, index) => (
         <div className="col-12 col-sm-6 col-lg-4" key={index}>
-          <div className="dd-card h-100" style={{ padding: 20, minHeight: 230 }}>
+          <div
+            className="dd-card h-100"
+            style={{ padding: 20, minHeight: 230 }}
+          >
             <div className="placeholder-glow">
               <span className="placeholder col-3 rounded mb-3" />
               <span className="placeholder col-9 rounded d-block mb-3" />
@@ -158,7 +161,7 @@ export default function PoliciesPage() {
           .split(",")
           .map((keyword) => keyword.trim())
           .filter(Boolean)
-          .join(" ")
+          .join(" "),
       );
       setPage(1);
     }, 300);
@@ -192,7 +195,7 @@ export default function PoliciesPage() {
             size: PAGE_SIZE,
             total: 0,
             total_pages: 0,
-          })
+          }),
         );
       } catch (requestError) {
         if (
@@ -201,7 +204,7 @@ export default function PoliciesPage() {
         ) {
           setError(
             requestError.message ||
-              "정책 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
+              "정책 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요.",
           );
         }
       } finally {
@@ -225,11 +228,11 @@ export default function PoliciesPage() {
   const totalPages = Number(meta.total_pages || meta.totalPages || 0);
   const currentPage = Math.min(
     Math.max(Number(meta.page || page || 1), 1),
-    totalPages || 1
+    totalPages || 1,
   );
   const visiblePageNumbers = useMemo(
     () => getVisiblePageNumbers(currentPage, totalPages),
-    [currentPage, totalPages]
+    [currentPage, totalPages],
   );
 
   const updateFilter = (setter) => (value) => {
@@ -358,7 +361,7 @@ export default function PoliciesPage() {
                 </span>
               </label>
               <label className="col-12 col-lg-6">
-                <span className="dd-label">대상 생애 단계</span>
+                <span className="dd-label">지원 대상</span>
                 <select
                   className="dd-select"
                   value={stage}
@@ -388,7 +391,9 @@ export default function PoliciesPage() {
 
         <div className="mt-3 d-flex justify-content-between gap-3">
           <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>
-            {loading ? "정책 목록을 불러오는 중이에요." : `총 ${meta.total || 0}개 정책`}
+            {loading
+              ? "정책 목록을 불러오는 중이에요."
+              : `총 ${meta.total || 0}개 정책`}
           </p>
           {!loading && meta.total_pages > 0 && (
             <p className="mb-0 dd-subtle" style={{ fontSize: 13 }}>
@@ -398,13 +403,19 @@ export default function PoliciesPage() {
         </div>
 
         {favoriteError && (
-          <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
+          <p
+            className="dd-disclaimer mt-3 mb-0"
+            style={{ color: "var(--dd-coral)" }}
+          >
             <Icon name="CircleAlert" size={13} /> {favoriteError}
           </p>
         )}
 
         {error && (
-          <div className="dd-card-soft mt-4 text-center" style={{ padding: 32, color: "var(--dd-coral)" }}>
+          <div
+            className="dd-card-soft mt-4 text-center"
+            style={{ padding: 32, color: "var(--dd-coral)" }}
+          >
             <p className="mb-3">{error}</p>
             <button
               type="button"
@@ -446,7 +457,10 @@ export default function PoliciesPage() {
                         }
                         onClick={() => toggleBasket(policy)}
                       >
-                        <Icon name={inBasket ? "Check" : "GitCompare"} size={15} />
+                        <Icon
+                          name={inBasket ? "Check" : "GitCompare"}
+                          size={15}
+                        />
                         {inBasket ? "비교 담김" : "비교 담기"}
                       </button>
                     </PolicyCard>
@@ -456,7 +470,10 @@ export default function PoliciesPage() {
 
               {policies.length === 0 && (
                 <div className="col-12">
-                  <div className="dd-card-soft text-center" style={{ padding: 40, color: "var(--dd-stone-500)" }}>
+                  <div
+                    className="dd-card-soft text-center"
+                    style={{ padding: 40, color: "var(--dd-stone-500)" }}
+                  >
                     검색 결과가 없어요. 다른 조건으로 찾아보세요.
                   </div>
                 </div>
