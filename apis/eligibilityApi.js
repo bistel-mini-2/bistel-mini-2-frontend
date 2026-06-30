@@ -3,6 +3,7 @@ import { axios } from "./axiosConfig";
 const ELIGIBILITY_REQUESTS_PATH = "/api/v1/eligibility/requests";
 
 const createRequest = ({
+  chatSessionId,
   policyId,
   userConditions,
   sourceRefId,
@@ -13,6 +14,7 @@ const createRequest = ({
   axios.post(
     ELIGIBILITY_REQUESTS_PATH,
     {
+      ...(chatSessionId ? { chat_session_id: chatSessionId } : {}),
       policy_id: policyId,
       source_type: sourceType || "POLICY_DETAIL",
       user_conditions: userConditions,
