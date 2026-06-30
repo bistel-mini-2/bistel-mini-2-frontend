@@ -48,6 +48,9 @@ const STATUS_LABELS = {
 };
 
 const STAGE_LABELS = {
+  pregnant: "임신 준비·임신 중",
+  newborn: "출산 직후·신생아",
+  infant: "영유아",
   child: "아동",
   teen: "청소년",
   youth: "청년",
@@ -59,7 +62,7 @@ const STAGE_LABELS = {
 const DETAIL_FALLBACK = "공식 안내에서 확인해 주세요.";
 
 function getPolicySlug(item) {
-  return item?.slug || item?.policy_slug || item?.policy_id || "";
+  return item?.policy_slug || item?.slug || item?.policy_id || "";
 }
 
 function displayText(value, fallback = DETAIL_FALLBACK) {
