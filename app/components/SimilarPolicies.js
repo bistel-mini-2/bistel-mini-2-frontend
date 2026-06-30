@@ -68,6 +68,7 @@ export default function SimilarPolicies({
   // 결과가 없을 때: 기본은 섹션을 숨기고(null), true면 "없음" 메시지를 보여준다.
   // 사용자가 직접 펼친 경우(카드 '유사 정책' 토글)엔 true로 둬 빈 화면을 피한다.
   showEmpty = false,
+  showCompareAction = false,
 }) {
   const usingProvided = Array.isArray(providedItems);
   const [fetchedItems, setFetchedItems] = useState([]);
@@ -213,11 +214,49 @@ export default function SimilarPolicies({
         <div className="d-flex flex-column gap-2">
           {items.map((item) => {
             const slug = item.slug || item.policy_id;
+            const compareHref =
+              showCompareAction && policySlug && slug
+                ? `/compare?a=${encodeURIComponent(policySlug)}&b=${encodeURIComponent(slug)}`
+                : "";
+            const detailHref = `/policies/${encodeURIComponent(slug)}`;
+
+            if (!compareHref) {
+              return (
+                <Link
+                  key={item.policy_id || slug}
+                  href={detailHref}
+                  className="d-flex align-items-start gap-3 dd-card-soft text-decoration-none dd-card-hover"
+                  style={{ padding: 12 }}
+                >
+                  <span
+                    className="dd-icon-tile"
+                    style={{ width: 38, height: 38, flex: "none" }}
+                  >
+                    <Icon name={iconForCategory(item.category)} size={18} />
+                  </span>
+                  <div className="flex-grow-1 min-w-0">
+                    <p
+                      className="mb-0 fw-semibold text-truncate"
+                      style={{ fontSize: 14, color: "var(--dd-ink)" }}
+                    >
+                      {item.name}
+                    </p>
+                    <Reason text={item.similarity_reason} />
+                    <Meta item={item} />
+                  </div>
+                  <Icon
+                    name="ChevronRight"
+                    size={16}
+                    style={{ color: "var(--dd-stone-400)", flex: "none" }}
+                  />
+                </Link>
+              );
+            }
+
             return (
-              <Link
+              <div
                 key={item.policy_id || slug}
-                href={`/policies/${encodeURIComponent(slug)}`}
-                className="d-flex align-items-start gap-3 dd-card-soft text-decoration-none dd-card-hover"
+                className="d-flex align-items-start gap-3 dd-card-soft dd-card-hover"
                 style={{ padding: 12 }}
               >
                 <span
@@ -231,17 +270,35 @@ export default function SimilarPolicies({
                     className="mb-0 fw-semibold text-truncate"
                     style={{ fontSize: 14, color: "var(--dd-ink)" }}
                   >
-                    {item.name}
+                    <Link
+                      href={detailHref}
+                      className="text-decoration-none"
+                      style={{ color: "inherit" }}
+                    >
+                      {item.name}
+                    </Link>
                   </p>
                   <Reason text={item.similarity_reason} />
                   <Meta item={item} />
+                  {compareHref && (
+                    <Link
+                      href={compareHref}
+                      className="dd-btn dd-btn-ghost dd-btn-sm mt-2"
+                      style={{ width: "fit-content" }}
+                    >
+                      <Icon name="GitCompare" size={14} /> 비교하기
+                    </Link>
+                  )}
                 </div>
-                <Icon
-                  name="ChevronRight"
-                  size={16}
+                <Link
+                  href={detailHref}
+                  className="d-inline-flex text-decoration-none"
+                  aria-label={`${item.name} 상세 보기`}
                   style={{ color: "var(--dd-stone-400)", flex: "none" }}
-                />
-              </Link>
+                >
+                  <Icon name="ChevronRight" size={16} />
+                </Link>
+              </div>
             );
           })}
         </div>

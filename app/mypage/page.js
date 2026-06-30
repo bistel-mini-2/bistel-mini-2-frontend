@@ -1768,10 +1768,63 @@ function MyPageContent() {
                             </div>
                           </div>
                           <hr className="dd-divider my-3" />
-                          <div className="d-flex justify-content-end">
+                          <div className="d-flex align-items-start justify-content-between gap-3 flex-wrap">
+                            {item.selection_guide ? (
+                              <div
+                                className="dd-card-soft"
+                                style={{
+                                  flex: "1 1 360px",
+                                  padding: "12px 14px",
+                                  border: "none",
+                                  background: "var(--dd-amber-50)",
+                                }}
+                              >
+                                <p
+                                  className="mb-1 fw-semibold d-flex align-items-center gap-1"
+                                  style={{
+                                    fontSize: 13,
+                                    color: "var(--dd-ink)",
+                                  }}
+                                >
+                                  <Icon
+                                    name="Sparkles"
+                                    size={14}
+                                    style={{ color: "var(--dd-amber)" }}
+                                  />{" "}
+                                  상황별 선택 가이드
+                                </p>
+                                <p
+                                  className="mb-0"
+                                  style={{
+                                    fontSize: 13,
+                                    color: "var(--dd-stone-600)",
+                                    lineHeight: 1.6,
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                  }}
+                                  title={item.selection_guide}
+                                >
+                                  {item.selection_guide}
+                                </p>
+                              </div>
+                            ) : (
+                              <p
+                                className="dd-subtle mb-0"
+                                style={{
+                                  flex: "1 1 360px",
+                                  fontSize: 13,
+                                  lineHeight: 1.6,
+                                }}
+                              >
+                                다시 비교하면 최신 기준의 선택 가이드를 확인할 수 있어요.
+                              </p>
+                            )}
                             <Link
                               href={`/compare?a=${item.policy_a_slug}&b=${item.policy_b_slug}`}
                               className="dd-btn dd-btn-amber dd-btn-sm"
+                              style={{ flex: "none" }}
                             >
                               <Icon name="Repeat" size={15} /> 다시 비교하기
                             </Link>
