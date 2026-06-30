@@ -10,7 +10,7 @@ import { sendMessageStream } from "@/apis/chatStreamClient";
 import eligibilityApi from "@/apis/eligibilityApi";
 import { createRecommendationRequest, getRecommendationResult } from "@/apis/recommendationApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
-import ApplyCardChat from "@/app/components/ApplyCardChat";
+import PolicySummaryCard from "@/app/components/PolicySummaryCard";
 import CompareChatCard from "@/app/components/CompareChatCard";
 import EvidencesChat from "@/app/components/EvidencesChat";
 import Header from "@/app/components/Header";
@@ -62,11 +62,11 @@ const QUICK_ACTIONS = [
     tone: "amber",
   },
   {
-    key: "apply",
-    title: "신청 준비",
-    description: "신청 방법과 준비 서류를 체크해요",
-    icon: "HandHeart",
-    prompt: "신청 준비에 필요한 서류와 절차를 알려줘.",
+    key: "summary",
+    title: "정책 요약",
+    description: "정책 핵심만 쉽게 요약해 드려요",
+    icon: "FileText",
+    prompt: "정책을 핵심 위주로 쉽게 요약해줘.",
     tone: "green",
   },
 ];
@@ -732,15 +732,11 @@ function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {
   const policies = (message.policies?.length ? message.policies : message.recommendations) || [];
 
   if (message.applyCard) {
-    const slug =
-      message.applyCard.slug ||
-      message.applyCard.policy_slug ||
-      getPolicySlug(policies[0]);
     return (
-      <ApplyCardChat
-        {...message.applyCard}
-        slug={slug}
-        policy_id={message.applyCard.policy_id || message.applyCard.policyId || slug}
+      <PolicySummaryCard
+        policy={message.applyCard}
+        summaryCard={message.summaryCard}
+        onAnalyzeEligibility={onAnalyzeEligibility}
       />
     );
   }
@@ -828,14 +824,20 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePo
           <>
             {renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId })}
 
-            {message.summaryCard && (
+            {actions.some((a) => SUMMARY_ACTIONS.has(typeof a === "string" ? a : a?.action || a?.type)) && message.summaryCard && message.policies?.[0] ? (
+              <PolicySummaryCard
+                policy={message.policies[0]}
+                summaryCard={message.summaryCard}
+                onAnalyzeEligibility={onAnalyzeEligibility}
+              />
+            ) : message.summaryCard ? (
               <SummaryCard
                 summaryCard={message.summaryCard}
                 actions={actions}
                 policySlug={policySlug}
                 onAnalyzeEligibility={onAnalyzeEligibility}
               />
-            )}
+            ) : null}
 
             <EvidencesChat evidences={message.evidences || []} />
 
@@ -1753,6 +1755,10 @@ export default function ChatPage() {
     if (action.key === "recommend") {
       setShowConditions(false);
       isRecommendRef.current = true;
+      send(action.prompt);
+      return;
+    }
+    if (action.key === "summary") {
       send(action.prompt);
       return;
     }
