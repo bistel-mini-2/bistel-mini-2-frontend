@@ -356,14 +356,9 @@ export default function EligibilityCardChat({ eligibility, policySlug }) {
                 <Icon name="FileText" size={15} /> 정책 상세보기
               </Link>
               {policySlug && (
-                <>
-                  <Link href={`/policies/${policySlug}/eligibility`} className="dd-acc-btn dd-acc-ghost">
-                    <Icon name="ShieldCheck" size={15} /> 지원 가능성 자세히 분석
-                  </Link>
-                  <Link href={detailHref} className="dd-acc-btn dd-acc-green">
-                    <Icon name="FileText" size={15} /> 정책 요약
-                  </Link>
-                </>
+                <Link href={`/policies/${policySlug}/eligibility`} className="dd-acc-btn dd-acc-ghost">
+                  <Icon name="ShieldCheck" size={15} /> 지원 가능성 자세히 분석
+                </Link>
               )}
               <Link href="/compare" className="dd-acc-btn dd-acc-amber">
                 <Icon name="GitCompare" size={15} /> 비슷한 정책 비교

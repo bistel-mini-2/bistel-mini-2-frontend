@@ -8,7 +8,7 @@ import remarkGfm from "remark-gfm";
 import chatApi, { normalizeAssistantMessage } from "@/apis/chatApi";
 import { sendMessageStream } from "@/apis/chatStreamClient";
 import eligibilityApi from "@/apis/eligibilityApi";
-import { createRecommendationRequest, getRecommendationResult } from "@/apis/recommendationApi";
+import { createRecommendationRequest, getRecommendationResult, submitRecommendationAnswers } from "@/apis/recommendationApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
 import PolicySummaryCard from "@/app/components/PolicySummaryCard";
 import CompareChatCard from "@/app/components/CompareChatCard";
@@ -1022,7 +1022,10 @@ export default function ChatPage() {
       latestAssistant &&
       (latestAssistant.conditionFilling || latestAssistant.slotRequest || latestAssistant.profileConfirm)
     ) {
-      return latestAssistant;
+      return {
+        ...latestAssistant,
+        requestId: latestAssistant.recommendationRequestId || latestAssistant.requestId,
+      };
     }
 
     return null;
@@ -1421,21 +1424,9 @@ export default function ChatPage() {
         setRecommendPending(false);
       };
 
-      try {
-        const { requestId } = await createRecommendationRequest({
-          source_type: "CHAT",
-          raw_query: text,
-          selected_conditions: selectedConditions,
-        });
-
-        let result = await getRecommendationResult(requestId);
-        for (let attempt = 0; result.status === "loading" && attempt < 15; attempt += 1) {
-          await wait(2000);
-          result = await getRecommendationResult(requestId);
-        }
-
+      const buildAssistantMessage = (requestId, result) => {
         const followUpQuestions = result.followUpQuestions || [];
-        const assistantMessage = {
+        return {
           id: makeId("assistant-recommendation"),
           role: "assistant",
           content:
@@ -1446,15 +1437,42 @@ export default function ChatPage() {
           policies: result.recommendations || [],
           evidences: [],
           actions: result.recommendations?.length > 0 ? ["recommend"] : [],
-          conditionFilling:
-            followUpQuestions.length > 0
-              ? { questions: followUpQuestions }
-              : null,
+          conditionFilling: followUpQuestions.length > 0 ? { questions: followUpQuestions } : null,
           recommendationRequestId: requestId,
           disclaimer: true,
         };
+      };
 
-        setMessages((prev) => [...prev, assistantMessage]);
+      const pollResult = async (requestId) => {
+        let result = await getRecommendationResult(requestId);
+        for (let attempt = 0; result.status === "loading" && attempt < 15; attempt += 1) {
+          await wait(2000);
+          result = await getRecommendationResult(requestId);
+        }
+        return result;
+      };
+
+      try {
+        let requestId;
+        if (answer?.requestId) {
+          // FOLLOW_UP_REQUIRED 상태의 기존 요청에 답변 제출
+          requestId = answer.requestId;
+          const followUpAnswers = Object.entries(answer?.answers || {}).map(([key, value]) => ({
+            question_text: key,
+            answer: Array.isArray(value) ? value.join(", ") : String(value ?? ""),
+          }));
+          await submitRecommendationAnswers(requestId, followUpAnswers);
+        } else {
+          const created = await createRecommendationRequest({
+            source_type: "CHAT",
+            raw_query: text,
+            selected_conditions: selectedConditions,
+          });
+          requestId = created.requestId;
+        }
+
+        const result = await pollResult(requestId);
+        setMessages((prev) => [...prev, buildAssistantMessage(requestId, result)]);
       } catch (nextError) {
         setMessages((prev) => prev.filter((message) => message.id !== userMessageId));
         addError(
