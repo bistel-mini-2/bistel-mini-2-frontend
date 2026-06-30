@@ -47,6 +47,8 @@ const getPolicyTarget = (policy) =>
   null;
 
 const getPolicyBenefit = (policy) =>
+  policy?.benefit_summary_display ||
+  policy?.benefitSummaryDisplay ||
   policy?.benefit_amount ||
   policy?.benefitAmount ||
   policy?.benefit_summary ||
