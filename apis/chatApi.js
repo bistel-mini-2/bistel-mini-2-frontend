@@ -127,6 +127,10 @@ export const normalizeAssistantMessage = (assistantMessage = {}) => {
     role: "assistant",
     content: payload.content || payload.text || "",
     policies: Array.isArray(payload.policies) ? payload.policies.map(normalizePolicyItem) : [],
+    // 사용자가 '유사 정책'을 명시 요청한 답변에만 백엔드가 실어보낸다.
+    similarPolicies: Array.isArray(payload.similar_policies || payload.similarPolicies)
+      ? (payload.similar_policies || payload.similarPolicies).map(normalizePolicyItem)
+      : [],
     recommendations: Array.isArray(payload.recommendations)
       ? payload.recommendations.map(normalizePolicyItem)
       : [],

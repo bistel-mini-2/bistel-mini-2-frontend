@@ -59,6 +59,8 @@ function Meta({ item }) {
 
 export default function SimilarPolicies({
   policySlug,
+  // 외부에서 항목을 직접 받으면(챗 응답처럼) 그걸 그대로 렌더하고 fetch하지 않는다.
+  items: providedItems,
   limit = 4,
   title = "이런 정책과 비슷해요",
   layout = "sidebar",
@@ -67,12 +69,15 @@ export default function SimilarPolicies({
   // 사용자가 직접 펼친 경우(카드 '유사 정책' 토글)엔 true로 둬 빈 화면을 피한다.
   showEmpty = false,
 }) {
-  const [items, setItems] = useState([]);
+  const usingProvided = Array.isArray(providedItems);
+  const [fetchedItems, setFetchedItems] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const items = usingProvided ? providedItems : fetchedItems;
 
   useEffect(() => {
-    if (!policySlug) {
+    // 외부 제공 모드면 fetch하지 않는다.
+    if (usingProvided || !policySlug) {
       return undefined;
     }
 
@@ -87,13 +92,13 @@ export default function SimilarPolicies({
           signal: controller.signal,
         });
         if (!controller.signal.aborted) {
-          setItems(Array.isArray(list) ? list : []);
+          setFetchedItems(Array.isArray(list) ? list : []);
         }
       } catch (err) {
         if (err?.code === "ERR_CANCELED") {
           return;
         }
-        setItems([]);
+        setFetchedItems([]);
         setError(getApiErrorMessage(err, "유사 정책을 불러오지 못했어요."));
       } finally {
         if (!controller.signal.aborted) {
@@ -105,7 +110,7 @@ export default function SimilarPolicies({
     loadSimilar();
 
     return () => controller.abort();
-  }, [policySlug, limit]);
+  }, [policySlug, limit, usingProvided]);
 
   // 결과도 에러도 없으면(빈 목록): 기본은 섹션을 숨기고, showEmpty면 메시지를 남긴다.
   const isEmpty = !loading && !error && items.length === 0;
