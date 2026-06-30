@@ -128,7 +128,64 @@ const compactValue = (value, maxLength = 120) => {
   return text.length > maxLength ? text.slice(0, maxLength - 1) + "…" : text;
 };
 
+const isDocumentRow = (field) => formatCompareField(field) === "제출 서류";
+
+const displayItems = (value) => {
+  if (value == null || value === "") {
+    return [];
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((item) => displayValue(item))
+      .filter((item) => item && item !== "공식 안내 확인 필요");
+  }
+  return displayValue(value)
+    .split(/\s*,\s*/)
+    .map((item) => item.trim())
+    .filter((item) => item && item !== "공식 안내 확인 필요");
+};
+
+function CompareCell({ label, value, documentRow }) {
+  const items = documentRow ? displayItems(value) : [];
+
+  return (
+    <div
+      style={{
+        background: "var(--dd-stone-50)",
+        border: "1px solid var(--dd-stone-100)",
+        borderRadius: 12,
+        padding: "10px 12px",
+      }}
+      title={displayValue(value)}
+    >
+      <span className="dd-pill dd-pill-amber mb-2" style={{ fontSize: 11 }}>
+        {label}
+      </span>
+      {documentRow ? (
+        items.length > 0 ? (
+          <ul className="mb-0 ps-3" style={{ color: "var(--dd-stone-600)", fontSize: 13, lineHeight: 1.6 }}>
+            {items.slice(0, 5).map((item) => (
+              <li key={item}>{item}</li>
+            ))}
+            {items.length > 5 && <li>외 {items.length - 5}개 서류</li>}
+          </ul>
+        ) : (
+          <p className="mb-0" style={{ color: "var(--dd-stone-600)", fontSize: 13, lineHeight: 1.55 }}>
+            공식 안내에서 제출 서류를 확인해 주세요.
+          </p>
+        )
+      ) : (
+        <p className="mb-0" style={{ color: "var(--dd-stone-600)", fontSize: 13, lineHeight: 1.55 }}>
+          {compactValue(value)}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function CompareRowCard({ row }) {
+  const documentRow = isDocumentRow(row.field);
+
   return (
     <div
       style={{
@@ -147,23 +204,12 @@ function CompareRowCard({ row }) {
         ["정책 A", row.a],
         ["정책 B", row.b],
       ].map(([label, value], index) => (
-        <div
+        <CompareCell
           key={index}
-          style={{
-            background: "var(--dd-stone-50)",
-            border: "1px solid var(--dd-stone-100)",
-            borderRadius: 12,
-            padding: "10px 12px",
-          }}
-          title={displayValue(value)}
-        >
-          <span className="dd-pill dd-pill-amber mb-2" style={{ fontSize: 11 }}>
-            {label}
-          </span>
-          <p className="mb-0" style={{ color: "var(--dd-stone-600)", fontSize: 13, lineHeight: 1.55 }}>
-            {compactValue(value)}
-          </p>
-        </div>
+          label={label}
+          value={value}
+          documentRow={documentRow}
+        />
       ))}
     </div>
   );
