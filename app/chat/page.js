@@ -363,15 +363,19 @@ const buildEligibilityStateFromResult = (eligibilityResult, base = {}) => {
       eligibilityResult.source_type ||
       eligibilityResult.sourceType ||
       base.sourceType ||
-      "POLICY_DETAIL",
+      "CHAT",
     sourceRefId:
       eligibilityResult.source_ref_id ||
       eligibilityResult.sourceRefId ||
       base.sourceRefId ||
+      eligibilityResult.request_id ||
+      eligibilityResult.requestId ||
       null,
     userConditions:
       eligibilityResult.user_conditions ||
       eligibilityResult.userConditions ||
+      eligibilityResult.input_summary ||
+      eligibilityResult.inputSummary ||
       base.userConditions ||
       {},
     status,

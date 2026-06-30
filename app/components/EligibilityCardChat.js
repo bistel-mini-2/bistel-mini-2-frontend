@@ -252,6 +252,18 @@ export default function EligibilityCardChat({ eligibility, policySlug }) {
     eligibility.error ||
     statusCopy.summary;
   const detailHref = policySlug ? `/policies/${policySlug}` : "/policies";
+  const requestId =
+    eligibility.requestId ||
+    eligibility.request_id ||
+    eligibility.result?.request_id ||
+    eligibility.result?.requestId ||
+    "";
+  const eligibilityHref =
+    policySlug && requestId
+      ? `/policies/${policySlug}/eligibility?requestId=${encodeURIComponent(requestId)}&source=chat`
+      : policySlug
+        ? `/policies/${policySlug}/eligibility`
+        : "/eligibility";
   const showActions = eligibility.status === REQUEST_STATUS.COMPLETED || eligibility.status === REQUEST_STATUS.FAILED;
 
   return (
@@ -356,7 +368,7 @@ export default function EligibilityCardChat({ eligibility, policySlug }) {
                 <Icon name="FileText" size={15} /> 정책 상세보기
               </Link>
               {policySlug && (
-                <Link href={`/policies/${policySlug}/eligibility`} className="dd-acc-btn dd-acc-ghost">
+                <Link href={eligibilityHref} className="dd-acc-btn dd-acc-ghost">
                   <Icon name="ShieldCheck" size={15} /> 지원 가능성 자세히 분석
                 </Link>
               )}
