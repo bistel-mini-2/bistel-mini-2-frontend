@@ -1242,6 +1242,68 @@ body {
   background: rgba(255, 255, 255, 0.18);
   color: #fff;
 }
+.dd-chat-compare-guide {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 12px;
+  padding: 16px;
+  border: 1px solid var(--dd-amber-200);
+  border-radius: 16px;
+  background: var(--dd-amber-50);
+  box-shadow: var(--dd-shadow-sm);
+}
+.dd-chat-compare-guide-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-width: 0;
+}
+.dd-chat-compare-guide-icon {
+  width: 42px;
+  height: 42px;
+  flex: none;
+}
+.dd-chat-compare-guide-title-wrap {
+  min-width: 0;
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 3px;
+}
+.dd-chat-compare-guide-title-wrap strong {
+  color: var(--dd-ink);
+  font-size: 15px;
+  font-weight: 900;
+  line-height: 1.35;
+}
+.dd-chat-compare-guide-title-wrap span {
+  color: var(--dd-stone-500);
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+.dd-chat-compare-guide-pill {
+  flex: none;
+  margin-top: 2px;
+}
+.dd-chat-compare-guide-body {
+  padding: 14px 15px;
+  border: 1px solid rgba(217, 119, 6, 0.16);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.78);
+}
+.dd-chat-compare-guide-body p {
+  margin: 0;
+  color: var(--dd-stone-600);
+  font-size: 14px;
+  line-height: 1.75;
+  overflow-wrap: anywhere;
+}
+.dd-chat-compare-guide-body p + p {
+  margin-top: 9px;
+}
 .dd-chat-avatar {
   width: 40px;
   height: 40px;

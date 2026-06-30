@@ -769,9 +769,63 @@ function ChatMarkdown({ content, variant = "assistant", isStreaming = false }) {
   );
 }
 
+const parseCompareGuideContent = (content = "") => {
+  const parts = String(content)
+    .split(/\n{2,}/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  if (parts.length <= 1) {
+    return { intro: parts[0] || "", guide: "" };
+  }
+  return {
+    intro: parts[0],
+    guide: parts.slice(1).join("\n\n"),
+  };
+};
+
+function CompareGuideChatCard({ content }) {
+  const { guide } = parseCompareGuideContent(content);
+  const guideParagraphs = guide
+    .split(/\n+/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+
+  return (
+    <div className="dd-chat-compare-guide">
+      <div className="dd-chat-compare-guide-head">
+        <span className="dd-icon-tile dd-tile-amber dd-chat-compare-guide-icon">
+          <Icon name="Target" size={18} />
+        </span>
+        <span className="dd-chat-compare-guide-title-wrap">
+          <strong>상황별 선택 가이드</strong>
+          <span>두 정책의 장점을 비교해 선택 기준을 정리했어요.</span>
+        </span>
+        <span className="dd-pill dd-pill-amber dd-chat-compare-guide-pill">
+          비교 기준
+        </span>
+      </div>
+      <div className="dd-chat-compare-guide-body">
+        {guideParagraphs.length > 0 ? (
+          guideParagraphs.map((paragraph, index) => (
+            <p key={index}>{paragraph}</p>
+          ))
+        ) : (
+          <p>두 정책의 지원 대상과 혜택 방향을 함께 보고 현재 상황에 더 가까운 정책을 선택해 주세요.</p>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSimilar, activePolicyId }) {
   const policySlug = getPolicySlug(message.policies?.[0]);
   const actions = message.actions || [];
+  const compareGuideContent = parseCompareGuideContent(message.content);
+  const isCompareGuide =
+    !isStreaming &&
+    hasAction(actions, "compare") &&
+    getMessagePolicies(message).length === 0 &&
+    !!compareGuideContent.guide;
   const hasPolicySummaryCard = shouldRenderPolicySummaryCards(message);
   const hasOwnCta =
     !!message.applyCard ||
@@ -785,8 +839,16 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSim
         <Icon name="Sparkles" size={20} />
       </span>
       <div className="dd-bubble-ai" style={{ flex: 1, minWidth: 0, maxWidth: 660 }}>
-        {message.content && (
+        {message.content && !isCompareGuide && (
           <ChatMarkdown content={message.content} isStreaming={isStreaming} />
+        )}
+        {isCompareGuide && (
+          <>
+            {compareGuideContent.intro && (
+              <ChatMarkdown content={compareGuideContent.intro} isStreaming={false} />
+            )}
+            <CompareGuideChatCard content={message.content} />
+          </>
         )}
 
         {!isStreaming && (
