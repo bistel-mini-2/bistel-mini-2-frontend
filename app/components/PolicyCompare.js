@@ -42,11 +42,85 @@ const toStaticSelectOption = (value) => {
   };
 };
 
+const COMPARE_FIELD_LABELS = {
+  target: "지원 대상",
+  target_summary: "지원 대상",
+  target_conditions: "대상 조건",
+  condition: "지원 조건",
+  income: "소득 조건",
+  income_conditions: "소득 조건",
+  benefit: "지원 내용",
+  application: "신청 방법",
+  documents: "필요 서류",
+  cautions: "유의 사항",
+  period: "신청 기간",
+  agency: "담당 기관",
+};
+
+const VALUE_REPLACEMENTS = [
+  [/target_summary/g, "지원 대상"],
+  [/target_conditions/g, "대상 조건"],
+  [/income_conditions/g, "소득 조건"],
+  [/manual_check_points/g, "추가 확인 조건"],
+  [/missing_conditions/g, "추가 확인 조건"],
+  [/matched_conditions/g, "충족 조건"],
+  [/field\s*:/g, "조건 항목: "],
+  [/operator\s*:/g, "비교 방식: "],
+  [/value\s*:/g, "기준값: "],
+  [/matching_strength\s*:/g, "판단 중요도: "],
+  [/condition_group\s*:/g, "조건 묶음: "],
+  [/rule_group\s*:/g, "조건 묶음: "],
+  [/\bAND\b/g, "모두 충족"],
+  [/\bOR\b/g, "하나 이상 충족"],
+  [/\bIN\b/g, "포함"],
+  [/\bLTE\b/g, "이하"],
+  [/\bGTE\b/g, "이상"],
+  [/\bTRUE\b|\bFALSE\b|\bNULL\b/gi, ""],
+  [/\bstage\b/g, "가족 상황"],
+  [/\bchildAge\b|\bchild_age\b/g, "자녀 연령"],
+  [/\bincome_status\b|\bbenefit_status\b/g, "수급 여부"],
+  [/\bmedian_income_percent\b/g, "중위소득 비율"],
+  [/\bspecial_condition\b|\bspecial\b/g, "가구 특성"],
+  [/\bdebt_status\b/g, "채무 상황"],
+  [/\btarget_type\b|\btarget_context\b/g, "지원 대상"],
+];
+
+const formatCompareField = (value) => {
+  const text = String(value || "").trim();
+  if (!text) {
+    return "비교 항목";
+  }
+
+  return COMPARE_FIELD_LABELS[text] || text.replace(/_/g, " ");
+};
+
+const normalizeCompareText = (value) => {
+  let text = String(value || "").trim();
+  VALUE_REPLACEMENTS.forEach(([pattern, replacement]) => {
+    text = text.replace(pattern, replacement);
+  });
+  return text
+    .replace(/[{}[\]"]/g, "")
+    .replace(/\s*[,|]\s*/g, ", ")
+    .replace(/\s+/g, " ")
+    .replace(/\s+([,.])/g, "$1")
+    .replace(/^[,\s]+|[,\s]+$/g, "");
+};
+
 const displayValue = (value) => {
   if (value == null || value === "") {
     return "공식 안내 확인 필요";
   }
-  return value;
+  if (Array.isArray(value)) {
+    return value.map(displayValue).filter(Boolean).join(", ");
+  }
+  if (typeof value === "object") {
+    return Object.entries(value)
+      .filter(([, itemValue]) => itemValue !== null && itemValue !== undefined && itemValue !== "")
+      .map(([key, itemValue]) => `${formatCompareField(key)}: ${displayValue(itemValue)}`)
+      .join(", ");
+  }
+  return normalizeCompareText(value);
 };
 
 const compactValue = (value, maxLength = 120) => {
@@ -67,7 +141,7 @@ function CompareRowCard({ row }) {
       }}
     >
       <div className="d-flex align-items-center gap-2">
-        <strong style={{ fontSize: 14, color: "var(--dd-ink)", lineHeight: 1.35 }}>{row.field}</strong>
+        <strong style={{ fontSize: 14, color: "var(--dd-ink)", lineHeight: 1.35 }}>{formatCompareField(row.field)}</strong>
       </div>
       {[
         ["정책 A", row.a],

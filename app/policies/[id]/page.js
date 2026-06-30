@@ -659,6 +659,16 @@ export default function PolicyDetailPage() {
     }
   };
 
+  const handleCompareWithRelated = (relatedPolicyId) => {
+    if (!likeSlug || !relatedPolicyId || likeSlug === relatedPolicyId) {
+      return;
+    }
+
+    router.push(
+      `/compare?a=${encodeURIComponent(likeSlug)}&b=${encodeURIComponent(relatedPolicyId)}`
+    );
+  };
+
   if (loading) {
     return (
       <div className="dd-page">
@@ -810,23 +820,36 @@ export default function PolicyDetailPage() {
                 </div>
                 <div className="d-flex flex-column gap-2">
                   {policy.related.map((relatedPolicy) => (
-                    <Link
+                    <div
                       key={relatedPolicy.id}
-                      href={`/policies/${encodeURIComponent(relatedPolicy.id)}`}
-                      className="d-flex align-items-center gap-3 dd-card-soft text-decoration-none dd-card-hover"
+                      className="d-flex align-items-center gap-3 dd-card-soft"
                       style={{ padding: 12 }}
                     >
                       <span className="dd-icon-tile" style={{ width: 38, height: 38, flex: "none" }}>
                         <Icon name={relatedPolicy.icon} size={18} />
                       </span>
                       <div className="flex-grow-1 min-w-0">
-                        <p className="mb-0 fw-semibold text-truncate" style={{ fontSize: 14, color: "var(--dd-ink)" }}>{relatedPolicy.name}</p>
+                        <Link
+                          href={`/policies/${encodeURIComponent(relatedPolicy.id)}`}
+                          className="mb-0 fw-semibold text-truncate d-block text-decoration-none"
+                          style={{ fontSize: 14, color: "var(--dd-ink)" }}
+                        >
+                          {relatedPolicy.name}
+                        </Link>
                         <p className="mb-0 text-truncate" style={{ fontSize: 12, color: "var(--dd-stone-500)" }}>
                           {[relatedPolicy.tag, relatedPolicy.region, relatedPolicy.targetStage].filter(Boolean).join(" · ")}
                         </p>
                       </div>
-                      <Icon name="ChevronRight" size={16} style={{ color: "var(--dd-stone-400)" }} />
-                    </Link>
+                      <button
+                        type="button"
+                        className="dd-btn dd-btn-ghost dd-btn-sm"
+                        style={{ flex: "none" }}
+                        onClick={() => handleCompareWithRelated(relatedPolicy.id)}
+                      >
+                        <Icon name="GitCompare" size={14} />
+                        비교
+                      </button>
+                    </div>
                   ))}
                 </div>
               </div>
