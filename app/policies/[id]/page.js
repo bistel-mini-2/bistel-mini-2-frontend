@@ -6,8 +6,10 @@ import { useParams, useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
+import eligibilityApi from "@/apis/eligibilityApi";
 import { getApiErrorMessage } from "@/apis/axiosConfig";
 import {
   getAiStatusPillClass,
@@ -46,6 +48,9 @@ const STATUS_LABELS = {
 };
 
 const STAGE_LABELS = {
+  pregnant: "임신 준비·임신 중",
+  newborn: "출산 직후·신생아",
+  infant: "영유아",
   child: "아동",
   teen: "청소년",
   youth: "청년",
@@ -57,7 +62,7 @@ const STAGE_LABELS = {
 const DETAIL_FALLBACK = "공식 안내에서 확인해 주세요.";
 
 function getPolicySlug(item) {
-  return item?.slug || item?.policy_slug || item?.policy_id || "";
+  return item?.policy_slug || item?.slug || item?.policy_id || "";
 }
 
 function displayText(value, fallback = DETAIL_FALLBACK) {
@@ -416,6 +421,8 @@ export default function PolicyDetailPage() {
   const [retryKey, setRetryKey] = useState(0);
   const [tab, setTab] = useState("target");
   const [summaryRetryKey, setSummaryRetryKey] = useState(0);
+  const [eligibilityPending, setEligibilityPending] = useState(false);
+  const [eligibilityError, setEligibilityError] = useState("");
   const [aiSummaryState, setAiSummaryState] = useState({
     status: "READY",
     summary: null,
@@ -611,8 +618,49 @@ export default function PolicyDetailPage() {
     );
   };
 
-  const handleEligibility = () => {
-    router.push(`/policies/${encodeURIComponent(likeSlug)}/eligibility?source=policy-detail`);
+  const handleEligibility = async () => {
+    if (!likeSlug || eligibilityPending) {
+      return;
+    }
+
+    setEligibilityPending(true);
+    setEligibilityError("");
+
+    try {
+      const response = await eligibilityApi.createRequest({
+        policyId: likeSlug,
+        sourceType: "POLICY_DETAIL",
+        sourceRefId: likeSlug,
+      });
+      const eligibilityRequestId = response?.request_id || response?.requestId;
+
+      if (!eligibilityRequestId) {
+        throw new Error("분석 요청 번호를 받지 못했어요.");
+      }
+
+      const params = new URLSearchParams({
+        requestId: String(eligibilityRequestId),
+        source: "policy-detail",
+      });
+
+      router.push(
+        `/policies/${encodeURIComponent(likeSlug)}/eligibility?${params.toString()}`
+      );
+    } catch (error) {
+      if (error?.status === 401) {
+        const params = new URLSearchParams({
+          next: `/policies/${encodeURIComponent(likeSlug)}`,
+        });
+        router.push(`/login?${params.toString()}`);
+        return;
+      }
+
+      setEligibilityError(
+        getApiErrorMessage(error, "지원 가능성 분석 요청을 시작하지 못했어요.")
+      );
+    } finally {
+      setEligibilityPending(false);
+    }
   };
 
   if (loading) {
@@ -757,43 +805,20 @@ export default function PolicyDetailPage() {
             </div>
           </div>
 
-          {policy.related.length > 0 && (
-            <div className="col-12 col-lg-4">
-              <div className="dd-card" style={{ padding: 20, position: "sticky", top: 84 }}>
-                <div className="d-flex align-items-center gap-2 mb-3">
-                  <Icon name="Sparkles" size={16} style={{ color: "var(--dd-coral)" }} />
-                  <strong style={{ fontSize: 15 }}>함께 보면 좋은 정책</strong>
-                </div>
-                <div className="d-flex flex-column gap-2">
-                  {policy.related.map((relatedPolicy) => (
-                    <Link
-                      key={relatedPolicy.id}
-                      href={`/policies/${encodeURIComponent(relatedPolicy.id)}`}
-                      className="d-flex align-items-center gap-3 dd-card-soft text-decoration-none dd-card-hover"
-                      style={{ padding: 12 }}
-                    >
-                      <span className="dd-icon-tile" style={{ width: 38, height: 38, flex: "none" }}>
-                        <Icon name={relatedPolicy.icon} size={18} />
-                      </span>
-                      <div className="flex-grow-1 min-w-0">
-                        <p className="mb-0 fw-semibold text-truncate" style={{ fontSize: 14, color: "var(--dd-ink)" }}>{relatedPolicy.name}</p>
-                        <p className="mb-0 text-truncate" style={{ fontSize: 12, color: "var(--dd-stone-500)" }}>
-                          {[relatedPolicy.tag, relatedPolicy.region, relatedPolicy.targetStage].filter(Boolean).join(" · ")}
-                        </p>
-                      </div>
-                      <Icon name="ChevronRight" size={16} style={{ color: "var(--dd-stone-400)" }} />
-                    </Link>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* 유사 정책(벡터+에이전트) — 우측 사이드바, 규칙 기반 관련 정책 섹션을 대체. */}
+          <div className="col-12 col-lg-4">
+            <SimilarPolicies
+              policySlug={policy.id || policySlug}
+              limit={4}
+              showCompareAction
+            />
+          </div>
         </div>
 
         <div className="dd-card mt-4" style={{ padding: 22 }}>
           <p className="fw-bold mb-3" style={{ fontSize: 16, color: "var(--dd-ink)" }}>다음으로 무엇을 할까요?</p>
           <div className="d-flex flex-wrap gap-2">
-            <button type="button" className="dd-btn dd-btn-blue" onClick={handleEligibility}>
+            <button type="button" className="dd-btn dd-btn-blue" onClick={handleEligibility} disabled={eligibilityPending}>
               <Icon name="ShieldCheck" size={17} /> 지원 가능성 분석
             </button>
             {policy.url && (
@@ -805,6 +830,11 @@ export default function PolicyDetailPage() {
               <Icon name="MessageCircle" size={17} /> AI 챗봇에 질문하기
             </Link>
           </div>
+          {eligibilityError && (
+            <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
+              <Icon name="CircleAlert" size={13} /> {eligibilityError}
+            </p>
+          )}
           <div className="mt-3"><DisclaimerNote /></div>
         </div>
       </main>

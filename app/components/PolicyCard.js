@@ -79,6 +79,12 @@ export default function PolicyCard({
 
       {showMeta && (
         <div className="mt-3 d-flex flex-column gap-1" style={{ fontSize: 13 }}>
+          {policy.targetLabel && (
+            <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-stone-600)" }}>
+              <Icon name="Users" size={14} style={{ color: "var(--dd-coral)" }} />
+              <span>{policy.targetLabel}</span>
+            </div>
+          )}
           <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-stone-600)" }}>
             <Icon name="Wallet" size={14} style={{ color: "var(--dd-coral)" }} />
             <span>{policy.amount}</span>

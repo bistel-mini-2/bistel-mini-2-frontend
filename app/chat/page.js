@@ -18,6 +18,7 @@ import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import NextActions from "@/app/components/NextActions";
 import PolicyCardChat from "@/app/components/PolicyCardChat";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import RecommendChatCard from "@/app/components/RecommendChatCard";
 import RecommendProgress from "@/app/components/RecommendProgress";
 import ChatPromptDock from "@/app/components/ChatPromptDock";
@@ -671,7 +672,7 @@ function PolicySummaryCards({ message, onAnalyzeEligibility }) {
   );
 }
 
-function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {}) {
+function renderPolicyCards(message, { onAnalyzeEligibility, onAskSimilar, activePolicyId } = {}) {
   const actions = message.actions || [];
   const policies = getMessagePolicies(message);
 
@@ -711,9 +712,19 @@ function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {
             key={getPolicySlug(policy) || index}
             policy={policy}
             onAnalyzeEligibility={(nextPolicy) => onAnalyzeEligibility?.(nextPolicy, message)}
+            onAskSimilar={onAskSimilar}
             analyzing={String(activePolicyId || "") === String(getPolicyId(policy) || "")}
           />
         ))}
+        {/* 사용자가 '유사 정책'을 명시 요청했을 때만 백엔드가 실어준 목록을 답변에 노출 */}
+        {message.similarPolicies?.length > 0 && (
+          <SimilarPolicies
+            items={message.similarPolicies}
+            layout="sidebar"
+            sticky={false}
+            title="이런 정책과도 비슷해요"
+          />
+        )}
       </div>
     );
   }
@@ -754,7 +765,7 @@ function ChatMarkdown({ content, variant = "assistant", isStreaming = false }) {
   );
 }
 
-function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePolicyId }) {
+function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSimilar, activePolicyId }) {
   const policySlug = getPolicySlug(message.policies?.[0]);
   const actions = message.actions || [];
   const hasPolicySummaryCard = shouldRenderPolicySummaryCards(message);
@@ -776,7 +787,7 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePo
 
         {!isStreaming && (
           <>
-            {renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId })}
+            {renderPolicyCards(message, { onAnalyzeEligibility, onAskSimilar, activePolicyId })}
 
             {hasPolicySummaryCard ? (
               <PolicySummaryCards
@@ -1619,6 +1630,16 @@ export default function ChatPage() {
     ]
   );
 
+  // 카드의 '유사 정책' 버튼 → 명시 요청을 전송해, 유사 정책을 다음 챗봇 응답으로 받는다.
+  const askSimilar = useCallback(
+    (policy) => {
+      const name = getPolicyName(policy);
+      if (!name) return;
+      send(`${name} 비슷한 정책 소개해줘`);
+    },
+    [send]
+  );
+
   const selectSession = useCallback(
     async (sessionId) => {
       if (!sessionId || sessionId === activeSessionId) return;
@@ -1798,6 +1819,7 @@ export default function ChatPage() {
                       message={message}
                       isStreaming={message.id === streamingMessageId}
                       onAnalyzeEligibility={startEligibilityAnalysis}
+                      onAskSimilar={askSimilar}
                       activePolicyId={activeEligibility?.status === REQUEST_STATUS.PROCESSING ? activeEligibility?.policyId : null}
                     />
                   )

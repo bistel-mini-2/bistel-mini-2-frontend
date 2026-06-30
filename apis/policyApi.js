@@ -2,7 +2,12 @@ import { axios } from "./axiosConfig";
 
 const getPolicies = ({
   query,
+  detailQuery,
+  searchScope = "policy_name",
   category,
+  tags,
+  regionCode,
+  region,
   stage,
   sort = "updated_at",
   page = 1,
@@ -11,7 +16,16 @@ const getPolicies = ({
 } = {}) => {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
+  if (searchScope) params.set("search_scope", searchScope);
+  if (detailQuery) params.set("detail_q", detailQuery);
   if (category) params.set("category", category);
+  if (Array.isArray(tags)) {
+    tags.filter(Boolean).forEach((tag) => params.append("tags", tag));
+  } else if (tags) {
+    params.set("tags", tags);
+  }
+  if (regionCode) params.set("region_code", regionCode);
+  else if (region) params.set("region", region);
   if (stage) params.set("stage", stage);
   params.set("sort", sort);
   params.set("page", String(page));
@@ -55,6 +69,25 @@ const getPolicyAiSummary = (
     });
 };
 
-const policyApi = { getPolicies, getPolicyDetail, getPolicyAiSummary };
+// 기준 정책과 유사한 정책 목록(벡터+에이전트). items 배열만 반환한다.
+const getSimilarPolicies = async (policySlug, { limit = 4, signal } = {}) => {
+  const data = await axios.get(
+    `/api/v1/policies/${encodeURIComponent(policySlug)}/similar`,
+    {
+      params: { limit },
+      signal,
+      preserveResponse: true,
+    }
+  );
+  const payload = data?.data ?? data;
+  return Array.isArray(payload?.items) ? payload.items : [];
+};
+
+const policyApi = {
+  getPolicies,
+  getPolicyDetail,
+  getPolicyAiSummary,
+  getSimilarPolicies,
+};
 
 export default policyApi;
