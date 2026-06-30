@@ -1424,6 +1424,195 @@ body {
 .dd-summary-grid p + p {
   margin-top: 4px;
 }
+.dd-elig-result-card {
+  display: grid;
+  gap: 22px;
+  margin-top: 14px;
+  padding: 22px;
+  border: 1px solid var(--dd-stone-200);
+  border-radius: 18px;
+  background: #fff7ed;
+  box-shadow: var(--dd-shadow-sm);
+}
+.dd-elig-result-loading {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--dd-coral-200);
+  border-radius: 16px;
+  background: #fff;
+  color: var(--dd-stone-600);
+}
+.dd-elig-result-loading strong {
+  display: block;
+  color: var(--dd-ink);
+  font-size: 14px;
+}
+.dd-elig-result-loading p {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 1.5;
+}
+.dd-elig-result-banner {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 24px 28px;
+  border-radius: 16px;
+  background: #fff;
+  border: 1px solid var(--dd-stone-200);
+}
+.dd-elig-result-banner.is-success {
+  background: #ecfdf5;
+  border-color: #86efac;
+}
+.dd-elig-result-banner.is-warn {
+  background: var(--dd-amber-50);
+  border-color: var(--dd-amber-200);
+}
+.dd-elig-result-banner.is-danger {
+  background: var(--dd-coral-50);
+  border-color: var(--dd-coral-200);
+}
+.dd-elig-result-icon {
+  width: 64px;
+  height: 64px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  border-radius: 18px;
+  background: #fff;
+  color: var(--dd-green);
+  box-shadow: var(--dd-shadow);
+}
+.dd-elig-result-banner.is-warn .dd-elig-result-icon {
+  color: var(--dd-amber);
+}
+.dd-elig-result-banner.is-danger .dd-elig-result-icon {
+  color: var(--dd-coral);
+}
+.dd-elig-result-copy {
+  min-width: 0;
+  display: grid;
+  gap: 8px;
+}
+.dd-elig-result-copy strong {
+  color: var(--dd-ink);
+  font-size: 20px;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.dd-elig-result-copy strong span {
+  color: var(--dd-green);
+}
+.dd-elig-result-banner.is-warn .dd-elig-result-copy strong span {
+  color: var(--dd-amber);
+}
+.dd-elig-result-banner.is-danger .dd-elig-result-copy strong span {
+  color: var(--dd-coral);
+}
+.dd-elig-result-copy p {
+  margin: 0;
+  color: var(--dd-stone-600);
+  font-size: 16px;
+  line-height: 1.55;
+}
+.dd-elig-result-section {
+  display: grid;
+  gap: 14px;
+}
+.dd-elig-result-section + .dd-elig-result-section {
+  padding-top: 20px;
+  border-top: 1px solid var(--dd-stone-200);
+}
+.dd-elig-result-section h3 {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0;
+  color: var(--dd-stone-600);
+  font-size: 16px;
+  font-weight: 900;
+}
+.dd-elig-result-section h3 svg {
+  color: var(--dd-coral);
+}
+.dd-elig-criteria-list {
+  display: grid;
+  gap: 12px;
+}
+.dd-elig-criteria-item {
+  min-width: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px;
+  border: 1px solid var(--dd-stone-200);
+  border-radius: 16px;
+  background: #fff;
+  box-shadow: var(--dd-shadow-sm);
+}
+.dd-elig-criteria-item > span:first-child {
+  min-width: 0;
+  display: grid;
+  gap: 10px;
+}
+.dd-elig-criteria-item strong {
+  color: var(--dd-ink);
+  font-size: 16px;
+  font-weight: 900;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+.dd-elig-criteria-item p {
+  margin: 0;
+  color: var(--dd-stone-600);
+  font-size: 14px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+.dd-elig-criteria-item > .dd-pill {
+  flex: none;
+  font-size: 14px;
+  font-weight: 900;
+  padding: 8px 15px;
+}
+.dd-elig-input-section {
+  gap: 12px;
+}
+.dd-elig-input-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+.dd-elig-input-chips span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 7px 15px;
+  border-radius: 999px;
+  background: var(--dd-stone-100);
+  color: var(--dd-stone-400);
+  font-size: 14px;
+  font-weight: 800;
+}
+.dd-elig-input-chips strong {
+  color: var(--dd-stone-600);
+  font-size: 14px;
+  font-weight: 900;
+}
+.dd-elig-result-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  padding-top: 20px;
+  border-top: 1px solid var(--dd-stone-200);
+}
 .dd-compare {
   display: flex;
   gap: 9px;
@@ -1616,6 +1805,14 @@ body {
   border-color: var(--dd-coral);
   color: var(--dd-coral);
 }
+.dd-acc-amber {
+  background: #fff;
+  color: var(--dd-amber);
+  border-color: var(--dd-amber-200);
+}
+.dd-acc-amber:hover {
+  background: var(--dd-amber-50);
+}
 .dd-na-blue {
   background: #fff;
   color: var(--dd-blue);
@@ -1658,6 +1855,14 @@ body {
   flex-wrap: wrap;
   gap: 8px;
   margin-top: 14px;
+}
+.dd-policy-summary-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.dd-policy-summary-stack > .dd-apply-card-chat {
+  margin-top: 0 !important;
 }
 .dd-evidences-chat {
   margin-top: 12px;
@@ -2333,5 +2538,35 @@ body {
   .dd-policy-card-chat-actions {
     width: 100%;
     justify-content: flex-start;
+  }
+  .dd-elig-result-card {
+    padding: 16px;
+    border-radius: 16px;
+  }
+  .dd-elig-result-banner {
+    align-items: flex-start;
+    padding: 18px;
+  }
+  .dd-elig-result-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 15px;
+  }
+  .dd-elig-result-copy strong {
+    font-size: 17px;
+  }
+  .dd-elig-result-copy p {
+    font-size: 14px;
+  }
+  .dd-elig-criteria-item {
+    flex-direction: column;
+    padding: 16px;
+  }
+  .dd-elig-criteria-item > .dd-pill {
+    align-self: flex-start;
+  }
+  .dd-elig-result-actions .dd-acc-btn {
+    width: 100%;
+    justify-content: center;
   }
 }
