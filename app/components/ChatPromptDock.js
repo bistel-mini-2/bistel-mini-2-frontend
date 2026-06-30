@@ -2,9 +2,28 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Icon from "./Icon";
 
+const getOptionLabel = (option) =>
+  option?.label ||
+  option?.name ||
+  option?.policy_name ||
+  option?.policyName ||
+  option?.title ||
+  option?.text ||
+  String(option?.value || option?.policy_id || option?.policyId || option?.id || "");
+
+const getOptionValue = (option) =>
+  option?.value ||
+  option?.policy_id ||
+  option?.policyId ||
+  option?.id ||
+  option?.slug ||
+  getOptionLabel(option);
+
 const normalizeOptions = (options = []) =>
   options.map((opt) =>
-    typeof opt === "string" ? { label: opt, value: opt } : opt
+    typeof opt === "string"
+      ? { label: opt, value: opt }
+      : { ...opt, label: getOptionLabel(opt), value: getOptionValue(opt) }
   );
 
 const UNKNOWN_VALUE = "__UNKNOWN__";

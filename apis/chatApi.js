@@ -15,6 +15,152 @@ const getPayload = (response) => {
 
 const firstArray = (values) => values.find((value) => Array.isArray(value)) || [];
 
+const getPolicyLabel = (policy) =>
+  policy?.policy_name || policy?.policyName || policy?.name || policy?.title || String(policy || "");
+
+const getPolicyValue = (policy) =>
+  policy?.policy_id || policy?.policyId || policy?.id || policy?.slug || getPolicyLabel(policy);
+
+const normalizePolicyOptions = (options = []) =>
+  options.map((option) => {
+    if (!isObject(option)) return option;
+    return {
+      ...option,
+      label: option.label || option.name || option.policy_name || option.policyName || option.title || String(getPolicyValue(option)),
+      value: option.value || getPolicyValue(option),
+    };
+  });
+
+const normalizeSlotRequest = (slotRequest) => {
+  if (!isObject(slotRequest)) return slotRequest || null;
+  const fields = Array.isArray(slotRequest.fields)
+    ? slotRequest.fields
+    : Array.isArray(slotRequest.slots)
+      ? slotRequest.slots
+      : [];
+
+  const normalizedFields = fields.map((field, index) => {
+    const source = isObject(field) ? field : { label: String(field) };
+    const key = source.key || source.name || source.field || source.field_name || source.fieldName || `slot_${index + 1}`;
+    return {
+      ...source,
+      key,
+      label:
+        source.label ||
+        source.question ||
+        source.question_text ||
+        source.questionText ||
+        source.message ||
+        key,
+      options: normalizePolicyOptions(source.options || source.choices || source.candidates || source.policies || []),
+    };
+  });
+
+  if (normalizedFields.length > 0) {
+    return { ...slotRequest, fields: normalizedFields };
+  }
+
+  const options = normalizePolicyOptions(
+    slotRequest.options || slotRequest.choices || slotRequest.candidates || slotRequest.policies || []
+  );
+  const question =
+    slotRequest.question ||
+    slotRequest.message ||
+    slotRequest.prompt ||
+    slotRequest.content ||
+    "어떤 정책을 선택할까요?";
+
+  return {
+    ...slotRequest,
+    fields: [
+      {
+        key: slotRequest.key || slotRequest.slot || "policy",
+        label: question,
+        options,
+      },
+    ],
+  };
+};
+
+const normalizeClarification = (clarification) => {
+  if (!clarification) return null;
+  if (typeof clarification === "string") {
+    return {
+      type: "clarification",
+      fields: [{ key: "policy", label: clarification, options: [] }],
+    };
+  }
+  if (!isObject(clarification)) return null;
+  return normalizeSlotRequest({
+    type: "clarification",
+    ...clarification,
+  });
+};
+
+const pickFirst = (...values) => values.find((value) => value !== undefined && value !== null && value !== "");
+
+const normalizeSummaryCard = (payload, policies = []) => {
+  const rawCard = payload.summary_card || payload.summaryCard || payload.policy_summary || payload.policySummary || null;
+  const card = isObject(rawCard) ? rawCard : {};
+  const hasPayloadSummary =
+    rawCard ||
+    payload.easy_summary ||
+    payload.easySummary ||
+    payload.key_points ||
+    payload.keyPoints ||
+    payload.target_summary ||
+    payload.targetSummary ||
+    payload.benefit_summary ||
+    payload.benefitSummary ||
+    payload.application_summary ||
+    payload.applicationSummary;
+
+  if (!hasPayloadSummary) return null;
+
+  const rawKeyPoints = pickFirst(card.key_points, card.keyPoints, payload.key_points, payload.keyPoints, []);
+
+  // key_points가 {label, content} 객체 배열이면 label 기준으로 target/benefit/apply/caution 추출
+  let kpTarget = null, kpBenefit = null, kpApply = null, kpCaution = null;
+  const keyConditions = [];
+  if (Array.isArray(rawKeyPoints) && rawKeyPoints.length > 0 && isObject(rawKeyPoints[0])) {
+    for (const point of rawKeyPoints) {
+      const label = String(point.label || "");
+      const content = String(point.content || "");
+      if (!content) continue;
+      if (label === "target" || /대상|자격|조건|연령|소득|거주/.test(label)) kpTarget = kpTarget || content;
+      else if (label === "benefit" || /혜택|금액/.test(label)) kpBenefit = kpBenefit || content;
+      else if (label === "application" || /신청|방법|절차/.test(label)) kpApply = kpApply || content;
+      else if (label === "condition_check" || /유의|주의/.test(label)) kpCaution = kpCaution || content;
+      else keyConditions.push(content);
+    }
+  } else if (Array.isArray(rawKeyPoints)) {
+    keyConditions.push(
+      ...rawKeyPoints.filter((p) => /대상|조건|자격|연령|소득|거주|지역|가구|출산|임신|아동|영유아/.test(String(p)))
+    );
+  }
+
+  return {
+    ...card,
+    summary: pickFirst(card.summary, typeof rawCard === "string" ? rawCard : null, payload.easy_summary, payload.easySummary, payload.summary),
+    key_conditions: pickFirst(card.key_conditions, card.keyConditions, keyConditions.length > 0 ? keyConditions : null) || [],
+    target: pickFirst(card.target, card.target_summary, card.targetSummary, payload.target_summary, payload.targetSummary, kpTarget),
+    benefit: pickFirst(card.benefit, card.benefit_summary, card.benefitSummary, payload.benefit_summary, payload.benefitSummary, kpBenefit),
+    apply: pickFirst(
+      card.apply,
+      card.application_summary,
+      card.applicationSummary,
+      card.apply_method,
+      card.applyMethod,
+      payload.application_summary,
+      payload.applicationSummary,
+      kpApply
+    ),
+    caution: pickFirst(card.caution, card.cautions, payload.caution, payload.cautions, kpCaution),
+    policy_id: pickFirst(card.policy_id, card.policyId, payload.policy_id, payload.policyId, policies[0]?.policy_id),
+    policy_name: pickFirst(card.policy_name, card.policyName, payload.policy_name, payload.policyName, policies[0]?.policy_name),
+  };
+};
+
 const normalizePolicyItem = (policy) => {
   if (!isObject(policy)) return policy;
 
@@ -121,19 +267,23 @@ const normalizeMessage = (message) => {
 
 export const normalizeAssistantMessage = (assistantMessage = {}) => {
   const payload = isObject(assistantMessage) ? assistantMessage : {};
+  const policies = Array.isArray(payload.policies) ? payload.policies.map(normalizePolicyItem) : [];
+  const recommendations = Array.isArray(payload.recommendations)
+    ? payload.recommendations.map(normalizePolicyItem)
+    : [];
+  const slotRequest = normalizeSlotRequest(payload.slot_request || payload.slotRequest) ||
+    normalizeClarification(payload.clarification || payload.clarification_request || payload.clarificationRequest);
 
   return {
     id: String(payload.chat_message_id || payload.chatMessageId || payload.id || `assistant-${Date.now()}`),
     role: "assistant",
     content: payload.content || payload.text || "",
-    policies: Array.isArray(payload.policies) ? payload.policies.map(normalizePolicyItem) : [],
+    policies,
     // 사용자가 '유사 정책'을 명시 요청한 답변에만 백엔드가 실어보낸다.
     similarPolicies: Array.isArray(payload.similar_policies || payload.similarPolicies)
       ? (payload.similar_policies || payload.similarPolicies).map(normalizePolicyItem)
       : [],
-    recommendations: Array.isArray(payload.recommendations)
-      ? payload.recommendations.map(normalizePolicyItem)
-      : [],
+    recommendations,
     evidences: Array.isArray(payload.evidences) ? payload.evidences : [],
     applyCard: payload.apply_card || payload.applyCard || null,
     actions: Array.isArray(payload.actions) ? payload.actions : [],
@@ -144,10 +294,11 @@ export const normalizeAssistantMessage = (assistantMessage = {}) => {
       payload.slot_context?.policy_name ||
       payload.slotContext?.policyName ||
       null,
-    slotRequest: payload.slot_request || payload.slotRequest || null,
+    slotRequest,
     conditionFilling: payload.condition_filling || payload.conditionFilling || null,
     profileConfirm: payload.profile_confirm || payload.profileConfirm || null,
-    summaryCard: payload.summary_card || payload.summaryCard || null,
+    eligibilityResult: payload.eligibility_result || payload.eligibilityResult || null,
+    summaryCard: normalizeSummaryCard(payload, policies),
     recommendationRequestId:
       payload.recommendation_request_id ||
       payload.recommendationRequestId ||
