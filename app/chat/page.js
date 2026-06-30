@@ -695,7 +695,7 @@ function renderPolicyCards(message, { onAnalyzeEligibility, onAskSimilar, active
   }
 
   if (hasAction(actions, "compare")) {
-    return <CompareChatCard policies={policies} />;
+    return null;
   }
 
   if (hasAction(actions, "recommend")) {
@@ -824,7 +824,6 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSim
   const isCompareGuide =
     !isStreaming &&
     hasAction(actions, "compare") &&
-    getMessagePolicies(message).length === 0 &&
     !!compareGuideContent.guide;
   const hasPolicySummaryCard = shouldRenderPolicySummaryCards(message);
   const hasOwnCta =
