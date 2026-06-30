@@ -1,13 +1,24 @@
 import { axios } from "./axiosConfig";
 
+const DEFAULT_TIMEOUT_MS = 15000;
+
+function withTimeoutSignal(signal, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  if (typeof AbortSignal !== "undefined" && AbortSignal.timeout) {
+    const timeoutSignal = AbortSignal.timeout(timeoutMs);
+    if (signal && AbortSignal.any) {
+      return AbortSignal.any([signal, timeoutSignal]);
+    }
+    return signal || timeoutSignal;
+  }
+
+  if (!signal) return signal;
+  return signal;
+}
+
 const getPolicies = ({
   query,
   detailQuery,
-  searchScope = "policy_name",
   category,
-  tags,
-  regionCode,
-  region,
   stage,
   sort = "updated_at",
   page = 1,
@@ -16,16 +27,9 @@ const getPolicies = ({
 } = {}) => {
   const params = new URLSearchParams();
   if (query) params.set("q", query);
-  if (searchScope) params.set("search_scope", searchScope);
+  if (query) params.set("search_scope", "policy_name");
   if (detailQuery) params.set("detail_q", detailQuery);
   if (category) params.set("category", category);
-  if (Array.isArray(tags)) {
-    tags.filter(Boolean).forEach((tag) => params.append("tags", tag));
-  } else if (tags) {
-    params.set("tags", tags);
-  }
-  if (regionCode) params.set("region_code", regionCode);
-  else if (region) params.set("region", region);
   if (stage) params.set("stage", stage);
   params.set("sort", sort);
   params.set("page", String(page));
@@ -33,14 +37,16 @@ const getPolicies = ({
 
   return axios.get("/api/v1/policies", {
     params,
-    signal,
+    signal: withTimeoutSignal(signal),
     preserveResponse: true,
+    timeout: DEFAULT_TIMEOUT_MS,
   });
 };
 
 const getPolicyDetail = (policySlug, { signal } = {}) =>
   axios.get(`/api/v1/policies/${encodeURIComponent(policySlug)}`, {
-    signal,
+    signal: withTimeoutSignal(signal),
+    timeout: DEFAULT_TIMEOUT_MS,
   });
 
 const getPolicyAiSummary = (
@@ -54,8 +60,9 @@ const getPolicyAiSummary = (
   const encodedSlug = encodeURIComponent(policySlug);
   const config = {
     params,
-    signal,
+    signal: withTimeoutSignal(signal),
     preserveResponse: true,
+    timeout: DEFAULT_TIMEOUT_MS,
   };
 
   return axios
@@ -75,8 +82,9 @@ const getSimilarPolicies = async (policySlug, { limit = 4, signal } = {}) => {
     `/api/v1/policies/${encodeURIComponent(policySlug)}/similar`,
     {
       params: { limit },
-      signal,
+      signal: withTimeoutSignal(signal),
       preserveResponse: true,
+      timeout: DEFAULT_TIMEOUT_MS,
     }
   );
   const payload = data?.data ?? data;
