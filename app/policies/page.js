@@ -29,15 +29,33 @@ const CATEGORIES = [
 ];
 
 const SORTS = [
-  { value: "updated_at", label: "최근 갱신순" },
-  { value: "name", label: "이름순" },
-  { value: "category", label: "분야순" },
-  { value: "relevance", label: "관련도순" },
+  { value: "updated_at", label: "최근 갱신순", hint: "최근 수정/갱신된 정책 먼저" },
+  { value: "name", label: "이름순", hint: "정책명 가나다순" },
+  { value: "category", label: "분야순", hint: "분야명 기준 정렬" },
+  { value: "relevance", label: "관련도순", hint: "검색어와 가까운 정책 먼저" },
 ];
 
 const STAGES = [
   { value: "", label: "전체 대상" },
   ...FAMILY_OPTIONS.stage,
+];
+
+const REGIONS = [
+  { value: "", label: "전체 지역" },
+  ...FAMILY_OPTIONS.region,
+];
+
+const TAG_OPTIONS = [
+  "임신",
+  "출산",
+  "영유아",
+  "아동",
+  "청소년",
+  "돌봄",
+  "의료",
+  "교육",
+  "주거",
+  "소득",
 ];
 
 const CATEGORY_ICONS = {
@@ -54,7 +72,7 @@ const CATEGORY_ICONS = {
 const TONES = ["coral", "green", "blue", "amber"];
 
 function getPolicySlug(item) {
-  return item.slug || item.policy_slug || item.policy_id;
+  return item.policy_slug || item.slug || item.policy_id;
 }
 
 function getPoliciesData(response) {
@@ -82,6 +100,10 @@ function getVisiblePageNumbers(currentPage, totalPages, maxVisible = 5) {
   return Array.from({ length: maxVisible }, (_, index) => start + index);
 }
 
+function firstText(...values) {
+  return values.find((value) => typeof value === "string" && value.trim());
+}
+
 function toPolicyCard(item) {
   const tag = item.tags?.[0] || item.category || "복지정책";
   const toneIndex = [...tag].reduce(
@@ -96,10 +118,20 @@ function toPolicyCard(item) {
     tag,
     tagTone: TONES[toneIndex % TONES.length],
     summary:
-      item.summary ||
-      item.benefit_summary ||
+      firstText(
+        item.summary,
+        item.benefit_summary_display,
+        item.benefit_summary,
+        item.target_summary,
+        item.condition_profile_target_summary
+      ) ||
       "정책 상세 내용은 공식 안내에서 확인할 수 있어요.",
-    amount: item.benefit_type || "지원 유형 확인 필요",
+    amount:
+      firstText(item.benefit_summary_display, item.benefit_summary, item.benefit_type) ||
+      "지원 내용 확인 필요",
+    targetLabel:
+      firstText(item.target_stage_display, item.life_stage_display, item.display_age) ||
+      (item.all_age ? "전 연령 대상" : ""),
   };
 }
 
@@ -127,9 +159,12 @@ export default function PoliciesPage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
+  const [detailQuery, setDetailQuery] = useState("");
+  const [debouncedDetailQuery, setDebouncedDetailQuery] = useState("");
+  const [searchScope] = useState("policy_name");
   const [category, setCategory] = useState("");
-  const [filterKeyword, setFilterKeyword] = useState("");
-  const [debouncedFilterKeyword, setDebouncedFilterKeyword] = useState("");
+  const [tags, setTags] = useState([]);
+  const [regionCode, setRegionCode] = useState("");
   const [stage, setStage] = useState("");
   const [sort, setSort] = useState("updated_at");
   const [showFilters, setShowFilters] = useState(false);
@@ -162,26 +197,23 @@ export default function PoliciesPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedFilterKeyword(
-        filterKeyword
-          .split(",")
-          .map((keyword) => keyword.trim())
-          .filter(Boolean)
-          .join(" ")
-      );
+      setDebouncedDetailQuery(detailQuery.trim());
       setPage(1);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [filterKeyword]);
+  }, [detailQuery]);
 
-  const searchQuery = useMemo(
+  const hasSearchTerms = Boolean(debouncedQuery || debouncedDetailQuery);
+  const visibleSorts = useMemo(
     () =>
-      [debouncedQuery, debouncedFilterKeyword]
-        .map((keyword) => keyword.trim())
-        .filter(Boolean)
-        .join(" "),
-    [debouncedQuery, debouncedFilterKeyword]
+      hasSearchTerms
+        ? SORTS
+        : SORTS.filter((option) => option.value !== "relevance"),
+    [hasSearchTerms]
   );
+  const effectiveSort = !hasSearchTerms && sort === "relevance" ? "updated_at" : sort;
+  const selectedSort =
+    SORTS.find((option) => option.value === effectiveSort) || SORTS[0];
 
   useEffect(() => {
     const controller = new AbortController();
@@ -191,10 +223,14 @@ export default function PoliciesPage() {
       setError("");
       try {
         const response = await policyApi.getPolicies({
-          query: searchQuery,
+          query: debouncedQuery,
+          detailQuery: debouncedDetailQuery,
+          searchScope,
           category,
+          tags,
+          regionCode,
           stage,
-          sort,
+          sort: effectiveSort,
           page,
           size: PAGE_SIZE,
           signal: controller.signal,
@@ -226,10 +262,14 @@ export default function PoliciesPage() {
     loadPolicies();
     return () => controller.abort();
   }, [
-    searchQuery,
+    debouncedQuery,
+    debouncedDetailQuery,
+    searchScope,
     category,
+    tags,
+    regionCode,
     stage,
-    sort,
+    effectiveSort,
     page,
     retryKey,
   ]);
@@ -255,12 +295,23 @@ export default function PoliciesPage() {
     setPage(1);
   };
 
+  const toggleTag = (value) => {
+    setTags((current) =>
+      current.includes(value)
+        ? current.filter((tag) => tag !== value)
+        : [...current, value]
+    );
+    setPage(1);
+  };
+
   const resetFilters = () => {
     setQuery("");
     setDebouncedQuery("");
+    setDetailQuery("");
+    setDebouncedDetailQuery("");
     setCategory("");
-    setFilterKeyword("");
-    setDebouncedFilterKeyword("");
+    setTags([]);
+    setRegionCode("");
     setStage("");
     setSort("updated_at");
     setPage(1);
@@ -293,7 +344,7 @@ export default function PoliciesPage() {
           정책 리스트
         </h1>
         <p className="mt-2" style={{ color: "var(--dd-stone-600)" }}>
-          복지정책을 검색하고 분야별로 살펴보세요.
+          정책명으로 빠르게 찾고, 상세 조건으로 대상·지원내용을 좁혀보세요.
         </p>
 
         <div className="row g-2 mt-2 align-items-center">
@@ -313,25 +364,31 @@ export default function PoliciesPage() {
               <input
                 className="dd-input"
                 style={{ paddingLeft: 44, borderRadius: 999 }}
-                placeholder="정책 이름이나 키워드로 검색"
+                placeholder="정책명을 검색해보세요"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
               />
             </div>
+            <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 12 }}>
+              정책명 기준으로 검색됩니다. 대상·지원내용은 상세검색에서 입력하세요.
+            </p>
           </div>
           <div className="col-12 col-sm-6 col-lg-auto">
             <select
               className="dd-select"
-              value={sort}
+              value={effectiveSort}
               onChange={(event) => updateFilter(setSort)(event.target.value)}
               aria-label="정책 정렬"
             >
-              {SORTS.map((option) => (
+              {visibleSorts.map((option) => (
                 <option key={option.value} value={option.value}>
                   {option.label}
                 </option>
               ))}
             </select>
+            <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 12 }}>
+              {selectedSort.hint}
+            </p>
           </div>
           <div className="col-12 col-sm-6 col-lg-auto">
             <button
@@ -341,7 +398,7 @@ export default function PoliciesPage() {
               onClick={() => setShowFilters((current) => !current)}
             >
               <Icon name="SlidersHorizontal" size={16} />
-              필터
+              상세검색
             </button>
           </div>
         </div>
@@ -373,17 +430,17 @@ export default function PoliciesPage() {
           <div className="dd-card mt-3" style={{ padding: 20 }}>
             <div className="row g-3">
               <label className="col-12 col-lg-6">
-                <span className="dd-label">키워드</span>
+                <span className="dd-label">상세 조건 검색어</span>
                 <input
                   className="dd-input"
-                  value={filterKeyword}
-                  placeholder="예: 출산, 청년, 임신·출산"
+                  value={detailQuery}
+                  placeholder="예: 맞벌이, 신청방법, 지원내용, 소득 기준"
                   onChange={(event) =>
-                    updateFilter(setFilterKeyword)(event.target.value)
+                    updateFilter(setDetailQuery)(event.target.value)
                   }
                 />
                 <span className="dd-subtle" style={{ fontSize: 12 }}>
-                  정책명, 분야, 태그, 조건 원문과 상세 설명에서 함께 찾습니다.
+                  대상·지원내용·신청방법·조건 프로필을 상세 검색합니다.
                 </span>
               </label>
               <label className="col-12 col-lg-6">
@@ -402,6 +459,42 @@ export default function PoliciesPage() {
                   ))}
                 </select>
               </label>
+              <label className="col-12 col-lg-6">
+                <span className="dd-label">지역</span>
+                <select
+                  className="dd-select"
+                  value={regionCode}
+                  onChange={(event) =>
+                    updateFilter(setRegionCode)(event.target.value)
+                  }
+                >
+                  {REGIONS.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <div className="col-12 col-lg-6">
+                <span className="dd-label d-block">태그</span>
+                <div className="d-flex flex-wrap gap-2">
+                  {TAG_OPTIONS.map((tag) => {
+                    const selected = tags.includes(tag);
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        className={
+                          "dd-tab" + (selected ? " is-active" : "")
+                        }
+                        onClick={() => toggleTag(tag)}
+                      >
+                        {tag}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
             </div>
             <div className="d-flex justify-content-end mt-3">
               <button
