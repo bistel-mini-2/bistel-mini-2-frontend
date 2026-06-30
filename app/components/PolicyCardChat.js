@@ -17,7 +17,12 @@ const getPolicySlug = (policy) =>
 const getPolicyName = (policy) =>
   policy?.policy_name || policy?.policyName || policy?.name || "정책";
 
-export default function PolicyCardChat({ policy, onAnalyzeEligibility, analyzing = false }) {
+export default function PolicyCardChat({
+  policy,
+  onAnalyzeEligibility,
+  onAskSimilar,
+  analyzing = false,
+}) {
   if (!policy) return null;
 
   const policyId = getPolicyId(policy);
@@ -58,6 +63,16 @@ export default function PolicyCardChat({ policy, onAnalyzeEligibility, analyzing
           >
             <Icon name="ShieldCheck" size={13} />
             지원가능성 분석
+          </button>
+        )}
+        {slug && onAskSimilar && (
+          <button
+            type="button"
+            className="dd-policy-card-chat-btn"
+            onClick={() => onAskSimilar(policy)}
+          >
+            <Icon name="Sparkles" size={13} />
+            유사 정책
           </button>
         )}
         <Link href={detailHref} className="dd-policy-card-chat-btn">

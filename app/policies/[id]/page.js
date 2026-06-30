@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import DisclaimerNote from "@/app/components/DisclaimerNote";
+import SimilarPolicies from "@/app/components/SimilarPolicies";
 import { useLiked } from "@/app/data/useLiked";
 import policyApi from "@/apis/policyApi";
 import eligibilityApi from "@/apis/eligibilityApi";
@@ -659,16 +660,6 @@ export default function PolicyDetailPage() {
     }
   };
 
-  const handleCompareWithRelated = (relatedPolicyId) => {
-    if (!likeSlug || !relatedPolicyId || likeSlug === relatedPolicyId) {
-      return;
-    }
-
-    router.push(
-      `/compare?a=${encodeURIComponent(likeSlug)}&b=${encodeURIComponent(relatedPolicyId)}`
-    );
-  };
-
   if (loading) {
     return (
       <div className="dd-page">
@@ -811,50 +802,10 @@ export default function PolicyDetailPage() {
             </div>
           </div>
 
-          {policy.related.length > 0 && (
-            <div className="col-12 col-lg-4">
-              <div className="dd-card" style={{ padding: 20, position: "sticky", top: 84 }}>
-                <div className="d-flex align-items-center gap-2 mb-3">
-                  <Icon name="Sparkles" size={16} style={{ color: "var(--dd-coral)" }} />
-                  <strong style={{ fontSize: 15 }}>함께 보면 좋은 정책</strong>
-                </div>
-                <div className="d-flex flex-column gap-2">
-                  {policy.related.map((relatedPolicy) => (
-                    <div
-                      key={relatedPolicy.id}
-                      className="d-flex align-items-center gap-3 dd-card-soft"
-                      style={{ padding: 12 }}
-                    >
-                      <span className="dd-icon-tile" style={{ width: 38, height: 38, flex: "none" }}>
-                        <Icon name={relatedPolicy.icon} size={18} />
-                      </span>
-                      <div className="flex-grow-1 min-w-0">
-                        <Link
-                          href={`/policies/${encodeURIComponent(relatedPolicy.id)}`}
-                          className="mb-0 fw-semibold text-truncate d-block text-decoration-none"
-                          style={{ fontSize: 14, color: "var(--dd-ink)" }}
-                        >
-                          {relatedPolicy.name}
-                        </Link>
-                        <p className="mb-0 text-truncate" style={{ fontSize: 12, color: "var(--dd-stone-500)" }}>
-                          {[relatedPolicy.tag, relatedPolicy.region, relatedPolicy.targetStage].filter(Boolean).join(" · ")}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        className="dd-btn dd-btn-ghost dd-btn-sm"
-                        style={{ flex: "none" }}
-                        onClick={() => handleCompareWithRelated(relatedPolicy.id)}
-                      >
-                        <Icon name="GitCompare" size={14} />
-                        비교
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-          )}
+          {/* 유사 정책(벡터+에이전트) — 우측 사이드바, 규칙 기반 관련 정책 섹션을 대체. */}
+          <div className="col-12 col-lg-4">
+            <SimilarPolicies policySlug={policy.id || policySlug} limit={4} />
+          </div>
         </div>
 
         <div className="dd-card mt-4" style={{ padding: 22 }}>
