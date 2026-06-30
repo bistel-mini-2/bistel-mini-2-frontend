@@ -26,6 +26,8 @@ const FEATURES = [
 
 export default function HomePage() {
   const heroPreview = getRecommended().slice(0, 3);
+  const getDetailHref = (policy) =>
+    `/policies/${encodeURIComponent(policy.backendSlug || policy.slug || policy.id)}`;
 
   return (
     <div className="dd-page">
@@ -178,7 +180,7 @@ export default function HomePage() {
             <div className="row g-4 mt-2">
               {POLICIES.slice(0, 4).map((p) => (
                 <div className="col-12 col-sm-6 col-lg-3" key={p.id}>
-                  <Link href={`/policies/${p.id}`} className="text-decoration-none d-block h-100">
+                  <Link href={getDetailHref(p)} className="text-decoration-none d-block h-100">
                     <div className="dd-card-soft dd-card-hover h-100 d-flex flex-column" style={{ padding: 22 }}>
                       <span className="dd-icon-tile" style={{ width: 48, height: 48 }}>
                         <Icon name={p.icon} size={24} />

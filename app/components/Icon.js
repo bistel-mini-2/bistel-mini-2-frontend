@@ -53,6 +53,7 @@ import {
   Repeat,
   LogOut,
   LoaderCircle,
+  RefreshCcw,
 } from "lucide-react";
 
 const MAP = {
@@ -105,6 +106,7 @@ const MAP = {
   Repeat,
   LogOut,
   LoaderCircle,
+  RefreshCcw,
 };
 
 export default function Icon({ name, size = 20, strokeWidth = 2, ...rest }) {

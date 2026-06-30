@@ -1,7 +1,3 @@
-// =========================================================================
-// 도담 — 정책 카드 (추천결과 / 정책리스트 / 함께 보면 좋은 정책 공용)
-// 순번 배지·매칭 배지·지원금액/기간·하단 액션 슬롯(children)을 옵션으로.
-// =========================================================================
 import Link from "next/link";
 import Icon from "@/app/components/Icon";
 
@@ -17,7 +13,10 @@ export default function PolicyCard({
   children,
 }) {
   if (!policy) return null;
-  const detailHref = href || `/policies/${policy.id}`;
+
+  const policySlug =
+    policy.slug || policy.policy_slug || policy.backendSlug || policy.backend_slug || policy.id;
+  const detailHref = href || (policySlug ? `/policies/${encodeURIComponent(policySlug)}` : "/policies");
   const handleToggleLike = (event) => {
     event.preventDefault();
     event.stopPropagation();
@@ -79,12 +78,6 @@ export default function PolicyCard({
 
       {showMeta && (
         <div className="mt-3 d-flex flex-column gap-1" style={{ fontSize: 13 }}>
-          {policy.targetLabel && (
-            <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-stone-600)" }}>
-              <Icon name="Users" size={14} style={{ color: "var(--dd-coral)" }} />
-              <span>{policy.targetLabel}</span>
-            </div>
-          )}
           <div className="d-flex align-items-center gap-2" style={{ color: "var(--dd-stone-600)" }}>
             <Icon name="Wallet" size={14} style={{ color: "var(--dd-coral)" }} />
             <span>{policy.amount}</span>
