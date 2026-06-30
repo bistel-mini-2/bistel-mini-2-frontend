@@ -385,21 +385,51 @@ const FOLLOW_UP_FIELD_ALIASES = {
   child_age: "childAge",
   childAge: "childAge",
   age: "childAge",
+  children_age: "childAge",
+  childrenAges: "childAge",
+  household_member_age: "childAge",
   income: "income",
   income_level: "income",
+  income_bracket: "income",
+  income_status: "income",
   median_income_percent: "income",
+  benefit_status: "income",
   stage: "stage",
   lifeArray: "stage",
   special: "special",
+  special_condition: "special",
+  target: "special",
+  target_type: "special",
   trgterIndvdlArray: "special",
   manual_confirmation: "manual_confirmation",
 };
 
+const FOLLOW_UP_SELECT_FIELDS = {
+  stage: {
+    label: "가족 상황",
+    options: FAMILY_OPTIONS.stage,
+  },
+  childAge: {
+    label: "자녀 연령대",
+    options: FAMILY_OPTIONS.childAge,
+  },
+  income: {
+    label: "가구 소득",
+    options: FAMILY_OPTIONS.income,
+  },
+  special: {
+    label: "특수 상황",
+    options: FAMILY_OPTIONS.special,
+  },
+};
+
 const FOLLOW_UP_FIELD_LABELS = {
-  stage: "가족 상황",
-  childAge: "자녀 연령대",
-  income: "가구 소득",
-  special: "특수 상황",
+  ...Object.fromEntries(
+    Object.entries(FOLLOW_UP_SELECT_FIELDS).map(([field, config]) => [
+      field,
+      config.label,
+    ])
+  ),
   manual_confirmation: "추가 확인 조건",
 };
 
@@ -408,6 +438,27 @@ const MANUAL_CONFIRMATION_OPTIONS = [
   { value: "no", label: "아니요, 해당되지 않아요" },
   { value: "unknown", label: "잘 모르겠어요" },
 ];
+
+const inferFollowUpFieldFromText = (text) => {
+  const value = String(text || "").toLowerCase();
+  if (!value) {
+    return "";
+  }
+
+  if (/소득|중위소득|income|수급|급여/.test(value)) {
+    return "income";
+  }
+  if (/자녀.*나이|아이.*나이|아동.*나이|연령|나이|개월|세\b|child.*age|age/.test(value)) {
+    return "childAge";
+  }
+  if (/임신|출산|신생아|영유아|아동|청소년|생애|life|stage/.test(value)) {
+    return "stage";
+  }
+  if (/한부모|조손|다문화|탈북|장애|다자녀|맞벌이|특수|가구.*특성|special/.test(value)) {
+    return "special";
+  }
+  return "";
+};
 
 const normalizeFollowUpField = (question) => {
   const rawField =
@@ -419,7 +470,23 @@ const normalizeFollowUpField = (question) => {
         question.label ||
         "";
 
-  return FOLLOW_UP_FIELD_ALIASES[rawField] || rawField;
+  const aliasedField = FOLLOW_UP_FIELD_ALIASES[rawField] || rawField;
+  const inferredField = inferFollowUpFieldFromText(
+    typeof question === "string"
+      ? question
+      : question.question_text || question.question || question.label || ""
+  );
+
+  if (
+    inferredField &&
+    (!aliasedField ||
+      aliasedField === "manual_confirmation" ||
+      !FOLLOW_UP_SELECT_FIELDS[aliasedField])
+  ) {
+    return inferredField;
+  }
+
+  return aliasedField;
 };
 
 const getQuestionText = (question) =>
@@ -429,7 +496,10 @@ const getQuestionText = (question) =>
 
 const getFollowUpQuestionKey = (question, index) =>
   String(
-    question?.follow_up_id ||
+    question?.source_point ||
+      question?.sourcePoint ||
+      question?.source ||
+      question?.follow_up_id ||
       question?.id ||
       question?.question_text ||
       question?.question ||
@@ -438,6 +508,15 @@ const getFollowUpQuestionKey = (question, index) =>
   );
 
 const getFollowUpOptions = (question, field) => {
+  if (field === "manual_confirmation") {
+    return MANUAL_CONFIRMATION_OPTIONS;
+  }
+
+  const configuredOptions = FOLLOW_UP_SELECT_FIELDS[field]?.options;
+  if (!configuredOptions) {
+    return [];
+  }
+
   if (Array.isArray(question?.options) && question.options.length > 0) {
     return question.options.map((option) =>
       typeof option === "string"
@@ -449,7 +528,20 @@ const getFollowUpOptions = (question, field) => {
     );
   }
 
-  return FAMILY_OPTIONS[field] || [];
+  return configuredOptions;
+};
+
+const hasSelectableFollowUpOptions = (question) => {
+  const field = normalizeFollowUpField(question);
+  return Boolean(FOLLOW_UP_SELECT_FIELDS[field]);
+};
+
+const shouldUseManualConfirmation = (question) => {
+  const field = normalizeFollowUpField(question);
+  if (!field || field === "region") {
+    return false;
+  }
+  return field === "manual_confirmation" || !hasSelectableFollowUpOptions(question);
 };
 
 const buildBaseUserConditions = (entrySource, recommendationRequestId) => {
@@ -673,6 +765,24 @@ export default function EligibilityResult({
   useEffect(() => {
     startTransition(() => setCurrentFamily(family));
   }, [family]);
+
+  useEffect(() => {
+    const nextRequestId = requestId ? String(requestId) : "";
+    if (!nextRequestId || nextRequestId === activeRequestId) {
+      return;
+    }
+
+    creationStartedRef.current = true;
+    startTransition(() => {
+      setActiveRequestId(nextRequestId);
+      setRequestResult(null);
+      setRequestError("");
+      setCreatingRequest(false);
+      setLoadingResult(true);
+      setFollowUpAnswers({});
+      setManualConfirmationAnswers({});
+    });
+  }, [activeRequestId, requestId]);
 
   useEffect(() => {
     if (typeof window === "undefined") {
@@ -1033,14 +1143,14 @@ export default function EligibilityResult({
     (question) => !criteriaLabels.has(question.field_name || question.label)
   );
   const manualFollowUpQuestions = questions.filter(
-    (question) => normalizeFollowUpField(question) === "manual_confirmation"
+    shouldUseManualConfirmation
   );
   const hasRegionOnlyQuestions = questions.some(
     (question) => normalizeFollowUpField(question) === "region"
   );
   const actionableQuestions = questions.filter((question) => {
     const field = normalizeFollowUpField(question);
-    return Boolean(field) && field !== "region" && field !== "manual_confirmation";
+    return Boolean(field) && field !== "region" && !shouldUseManualConfirmation(question);
   });
   const hasStructuredFollowUpQuestions =
     actionableQuestions.length > 0 || manualFollowUpQuestions.length > 0;
