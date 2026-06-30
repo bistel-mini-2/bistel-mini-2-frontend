@@ -1,8 +1,3 @@
-// =========================================================================
-// 도담 — 가족 상황 입력 폼 옵션 & 추천 요청 계약
-// 정책추천 폼 / 입력 요약 / 지원 가능성 분석에서 공유.
-// =========================================================================
-
 export const FAMILY_PROFILE_KEY = "dodam_family_profile";
 export const RECOMMENDATION_INPUT_KEY = "dodam_recommendation_input";
 
@@ -10,15 +5,15 @@ const SUPPORTED_SPECIAL_VALUES = ["single", "multi", "disabled", "many", "dual"]
 
 export const FAMILY_OPTIONS = {
   stage: [
-    { value: "pregnant", label: "임신 준비·임신 중" },
-    { value: "newborn", label: "출산 직후·신생아" },
+    { value: "pregnant", label: "임신·출산" },
+    { value: "newborn", label: "신생아" },
     { value: "infant", label: "영유아" },
     { value: "child", label: "아동" },
     { value: "teen", label: "청소년" },
   ],
   childAge: [
     { value: "preborn", label: "출생 전" },
-    { value: "0", label: "0세 (12개월 미만)" },
+    { value: "0", label: "0세(12개월 미만)" },
     { value: "1", label: "1세" },
     { value: "2-5", label: "2~5세" },
     { value: "6-12", label: "6~12세" },
@@ -51,10 +46,10 @@ export const FAMILY_OPTIONS = {
     { value: "jeju", label: "제주" },
   ],
   special: [
-    { value: "single", label: "한부모·조손 가정" },
-    { value: "multi", label: "다문화·탈북민 가정" },
+    { value: "single", label: "한부모 가족" },
+    { value: "multi", label: "다문화·조손 가족" },
     { value: "disabled", label: "장애인 가구" },
-    { value: "many", label: "다자녀 가정(2명 이상)" },
+    { value: "many", label: "다자녀 가구(2명 이상)" },
     { value: "dual", label: "맞벌이" },
   ],
 };
@@ -66,9 +61,6 @@ export const FAMILY_ENUM_VALUES = Object.fromEntries(
   ])
 );
 
-// fallback 기본값.
-// 저장된 가족 프로필이 없거나 조회에 실패했을 때만 입력 폼의 초기값으로 쓰인다.
-// (데모용 고정 데이터가 아니라, 프로필 미존재 시의 안전한 시작값)
 export const DEFAULT_FAMILY = {
   name: "보호자",
   stage: "newborn",
@@ -77,6 +69,9 @@ export const DEFAULT_FAMILY = {
   income: "mid1",
   region: "seoul",
   special: [],
+  // 신청자(보호자) 본인 나이. 빈 값이면 미입력(추천에 보내지 않음).
+  // 자녀 나이와 구분해 청소년산모 등 신청자 나이 기반 정책 오탐을 막는다.
+  age: "",
 };
 
 export function normalizeFamilyProfile(family = {}) {
@@ -89,7 +84,6 @@ export function normalizeFamilyProfile(family = {}) {
     ...DEFAULT_FAMILY,
     ...family,
     childAge,
-    // 기존 화면·로컬스토리지 호환용 파생값. API 계약은 단일 childAge를 사용한다.
     childrenAges: [childAge],
     special: Array.isArray(family.special)
       ? family.special.filter((item) => SUPPORTED_SPECIAL_VALUES.includes(item))
@@ -124,6 +118,12 @@ export function createRecommendationPayload(family = DEFAULT_FAMILY) {
     }
   }
 
+  // 신청자 나이는 enum이 아니라 선택적 숫자. 유효한 값일 때만 보낸다.
+  const ageNum = Number.parseInt(profile.age, 10);
+  if (Number.isFinite(ageNum) && ageNum > 0 && ageNum < 120) {
+    payload.age = ageNum;
+  }
+
   return payload;
 }
 
@@ -131,29 +131,28 @@ export function createFamilyProfilePayload(family = DEFAULT_FAMILY) {
   return createRecommendationPayload(family);
 }
 
-// value -> label 변환
 export function labelOf(group, value) {
-  const found = (FAMILY_OPTIONS[group] || []).find((o) => o.value === value);
+  const found = (FAMILY_OPTIONS[group] || []).find((option) => option.value === value);
   return found ? found.label : value;
 }
 
-// 입력 요약을 표 형태 행으로
 export function familyRows(family = DEFAULT_FAMILY) {
   const profile = normalizeFamilyProfile(family);
 
   return [
     { label: "가족 구성", value: labelOf("stage", profile.stage) },
-    {
-      label: "자녀 연령대",
-      value: labelOf("childAge", profile.childAge),
-    },
+    { label: "자녀 연령대", value: labelOf("childAge", profile.childAge) },
     { label: "가구 소득", value: labelOf("income", profile.income) },
     { label: "거주 지역", value: labelOf("region", profile.region) },
+    {
+      label: "신청자 나이",
+      value: profile.age ? `${profile.age}세` : "미입력",
+    },
     {
       label: "특수 상황",
       value:
         profile.special && profile.special.length
-          ? profile.special.map((s) => labelOf("special", s)).join(", ")
+          ? profile.special.map((item) => labelOf("special", item)).join(", ")
           : "해당 없음",
     },
   ];

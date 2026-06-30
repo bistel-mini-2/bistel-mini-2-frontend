@@ -28,35 +28,7 @@ const CATEGORIES = [
   "고용",
 ];
 
-const SORTS = [
-  { value: "updated_at", label: "최근 갱신순", hint: "최근 수정/갱신된 정책 먼저" },
-  { value: "name", label: "이름순", hint: "정책명 가나다순" },
-  { value: "category", label: "분야순", hint: "분야명 기준 정렬" },
-  { value: "relevance", label: "관련도순", hint: "검색어와 가까운 정책 먼저" },
-];
-
-const STAGES = [
-  { value: "", label: "전체 대상" },
-  ...FAMILY_OPTIONS.stage,
-];
-
-const REGIONS = [
-  { value: "", label: "전체 지역" },
-  ...FAMILY_OPTIONS.region,
-];
-
-const TAG_OPTIONS = [
-  "임신",
-  "출산",
-  "영유아",
-  "아동",
-  "청소년",
-  "돌봄",
-  "의료",
-  "교육",
-  "주거",
-  "소득",
-];
+const STAGES = [{ value: "", label: "전체 대상" }, ...FAMILY_OPTIONS.stage];
 
 const CATEGORY_ICONS = {
   "임신·출산": "Baby",
@@ -72,14 +44,12 @@ const CATEGORY_ICONS = {
 const TONES = ["coral", "green", "blue", "amber"];
 
 function getPolicySlug(item) {
-  return item.policy_slug || item.slug || item.policy_id;
+  return item.slug || item.policy_slug || item.policy_id;
 }
 
 function getPoliciesData(response) {
   const data = response?.data ?? response;
-  if (Array.isArray(data)) {
-    return data;
-  }
+  if (Array.isArray(data)) return data;
   return data?.items || [];
 }
 
@@ -100,16 +70,16 @@ function getVisiblePageNumbers(currentPage, totalPages, maxVisible = 5) {
   return Array.from({ length: maxVisible }, (_, index) => start + index);
 }
 
-function firstText(...values) {
-  return values.find((value) => typeof value === "string" && value.trim());
+function safeText(value, fallback = "") {
+  if (value === null || value === undefined) return fallback;
+  const text = String(value).trim();
+  if (!text || /^(null|undefined|NaN)$/i.test(text)) return fallback;
+  return text;
 }
 
 function toPolicyCard(item) {
-  const tag = item.tags?.[0] || item.category || "복지정책";
-  const toneIndex = [...tag].reduce(
-    (sum, char) => sum + char.charCodeAt(0),
-    0
-  );
+  const tag = safeText(item.tags?.[0] || item.category, "복지 정책");
+  const toneIndex = [...tag].reduce((sum, char) => sum + char.charCodeAt(0), 0);
 
   return {
     ...item,
@@ -118,20 +88,10 @@ function toPolicyCard(item) {
     tag,
     tagTone: TONES[toneIndex % TONES.length],
     summary:
-      firstText(
-        item.summary,
-        item.benefit_summary_display,
-        item.benefit_summary,
-        item.target_summary,
-        item.condition_profile_target_summary
-      ) ||
-      "정책 상세 내용은 공식 안내에서 확인할 수 있어요.",
-    amount:
-      firstText(item.benefit_summary_display, item.benefit_summary, item.benefit_type) ||
-      "지원 내용 확인 필요",
-    targetLabel:
-      firstText(item.target_stage_display, item.life_stage_display, item.display_age) ||
-      (item.all_age ? "전 연령 대상" : ""),
+      safeText(item.summary) ||
+      safeText(item.benefit_summary) ||
+      "정책 상세 내용은 공식 안내에서 확인해 주세요.",
+    amount: safeText(item.benefit_type, "지원 유형 확인 필요"),
   };
 }
 
@@ -159,14 +119,10 @@ export default function PoliciesPage() {
   const router = useRouter();
   const [query, setQuery] = useState("");
   const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [detailQuery, setDetailQuery] = useState("");
-  const [debouncedDetailQuery, setDebouncedDetailQuery] = useState("");
-  const [searchScope] = useState("policy_name");
   const [category, setCategory] = useState("");
-  const [tags, setTags] = useState([]);
-  const [regionCode, setRegionCode] = useState("");
+  const [detailKeyword, setDetailKeyword] = useState("");
+  const [debouncedDetailKeyword, setDebouncedDetailKeyword] = useState("");
   const [stage, setStage] = useState("");
-  const [sort, setSort] = useState("updated_at");
   const [showFilters, setShowFilters] = useState(false);
   const [page, setPage] = useState(1);
   const [items, setItems] = useState([]);
@@ -197,23 +153,20 @@ export default function PoliciesPage() {
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      setDebouncedDetailQuery(detailQuery.trim());
+      setDebouncedDetailKeyword(
+        detailKeyword
+          .split(",")
+          .map((keyword) => keyword.trim())
+          .filter(Boolean)
+          .join(" ")
+      );
       setPage(1);
     }, 300);
     return () => window.clearTimeout(timer);
-  }, [detailQuery]);
+  }, [detailKeyword]);
 
-  const hasSearchTerms = Boolean(debouncedQuery || debouncedDetailQuery);
-  const visibleSorts = useMemo(
-    () =>
-      hasSearchTerms
-        ? SORTS
-        : SORTS.filter((option) => option.value !== "relevance"),
-    [hasSearchTerms]
-  );
-  const effectiveSort = !hasSearchTerms && sort === "relevance" ? "updated_at" : sort;
-  const selectedSort =
-    SORTS.find((option) => option.value === effectiveSort) || SORTS[0];
+  const hasSearchKeyword = Boolean(debouncedQuery || debouncedDetailKeyword);
+  const effectiveSort = hasSearchKeyword ? "relevance" : "updated_at";
 
   useEffect(() => {
     const controller = new AbortController();
@@ -224,11 +177,8 @@ export default function PoliciesPage() {
       try {
         const response = await policyApi.getPolicies({
           query: debouncedQuery,
-          detailQuery: debouncedDetailQuery,
-          searchScope,
+          detailQuery: debouncedDetailKeyword,
           category,
-          tags,
-          regionCode,
           stage,
           sort: effectiveSort,
           page,
@@ -251,7 +201,7 @@ export default function PoliciesPage() {
         ) {
           setError(
             requestError.message ||
-              "정책 목록을 불러오지 못했어요. 잠시 후 다시 시도해주세요."
+              "정책 목록을 불러오지 못했어요. 잠시 후 다시 시도해 주세요."
           );
         }
       } finally {
@@ -263,11 +213,8 @@ export default function PoliciesPage() {
     return () => controller.abort();
   }, [
     debouncedQuery,
-    debouncedDetailQuery,
-    searchScope,
+    debouncedDetailKeyword,
     category,
-    tags,
-    regionCode,
     stage,
     effectiveSort,
     page,
@@ -295,33 +242,19 @@ export default function PoliciesPage() {
     setPage(1);
   };
 
-  const toggleTag = (value) => {
-    setTags((current) =>
-      current.includes(value)
-        ? current.filter((tag) => tag !== value)
-        : [...current, value]
-    );
-    setPage(1);
-  };
-
   const resetFilters = () => {
     setQuery("");
     setDebouncedQuery("");
-    setDetailQuery("");
-    setDebouncedDetailQuery("");
     setCategory("");
-    setTags([]);
-    setRegionCode("");
+    setDetailKeyword("");
+    setDebouncedDetailKeyword("");
     setStage("");
-    setSort("updated_at");
     setPage(1);
   };
 
   const goToPage = (nextPage) => {
     const normalizedPage = Math.min(Math.max(nextPage, 1), totalPages || 1);
-    if (normalizedPage !== page) {
-      setPage(normalizedPage);
-    }
+    if (normalizedPage !== page) setPage(normalizedPage);
   };
 
   const toggleBasket = (policy) => {
@@ -341,10 +274,10 @@ export default function PoliciesPage() {
         style={{ paddingTop: 32, paddingBottom: basket.length ? 110 : 64 }}
       >
         <h1 className="dd-title" style={{ fontSize: 30 }}>
-          정책 리스트
+          정책 목록
         </h1>
         <p className="mt-2" style={{ color: "var(--dd-stone-600)" }}>
-          정책명으로 빠르게 찾고, 상세 조건으로 대상·지원내용을 좁혀보세요.
+          정책명으로 먼저 찾고, 필요한 경우 상세 조건을 따로 추가해 보세요.
         </p>
 
         <div className="row g-2 mt-2 align-items-center">
@@ -364,31 +297,12 @@ export default function PoliciesPage() {
               <input
                 className="dd-input"
                 style={{ paddingLeft: 44, borderRadius: 999 }}
-                placeholder="정책명을 검색해보세요"
+                placeholder="정책명으로 검색"
                 value={query}
                 onChange={(event) => setQuery(event.target.value)}
+                aria-label="정책명 검색"
               />
             </div>
-            <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 12 }}>
-              정책명 기준으로 검색됩니다. 대상·지원내용은 상세검색에서 입력하세요.
-            </p>
-          </div>
-          <div className="col-12 col-sm-6 col-lg-auto">
-            <select
-              className="dd-select"
-              value={effectiveSort}
-              onChange={(event) => updateFilter(setSort)(event.target.value)}
-              aria-label="정책 정렬"
-            >
-              {visibleSorts.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <p className="dd-subtle mt-2 mb-0" style={{ fontSize: 12 }}>
-              {selectedSort.hint}
-            </p>
           </div>
           <div className="col-12 col-sm-6 col-lg-auto">
             <button
@@ -398,7 +312,7 @@ export default function PoliciesPage() {
               onClick={() => setShowFilters((current) => !current)}
             >
               <Icon name="SlidersHorizontal" size={16} />
-              상세검색
+              상세 조건
             </button>
           </div>
         </div>
@@ -430,21 +344,21 @@ export default function PoliciesPage() {
           <div className="dd-card mt-3" style={{ padding: 20 }}>
             <div className="row g-3">
               <label className="col-12 col-lg-6">
-                <span className="dd-label">상세 조건 검색어</span>
+                <span className="dd-label">대상·지원내용·조건 검색</span>
                 <input
                   className="dd-input"
-                  value={detailQuery}
-                  placeholder="예: 맞벌이, 신청방법, 지원내용, 소득 기준"
+                  value={detailKeyword}
+                  placeholder="예: 출산, 청소년, 방문 돌봄"
                   onChange={(event) =>
-                    updateFilter(setDetailQuery)(event.target.value)
+                    updateFilter(setDetailKeyword)(event.target.value)
                   }
                 />
                 <span className="dd-subtle" style={{ fontSize: 12 }}>
-                  대상·지원내용·신청방법·조건 프로필을 상세 검색합니다.
+                  정책명 검색과 분리해서 대상, 지원내용, 조건 설명에서 찾아요.
                 </span>
               </label>
               <label className="col-12 col-lg-6">
-                <span className="dd-label">대상</span>
+                <span className="dd-label">대상 생애 단계</span>
                 <select
                   className="dd-select"
                   value={stage}
@@ -459,42 +373,6 @@ export default function PoliciesPage() {
                   ))}
                 </select>
               </label>
-              <label className="col-12 col-lg-6">
-                <span className="dd-label">지역</span>
-                <select
-                  className="dd-select"
-                  value={regionCode}
-                  onChange={(event) =>
-                    updateFilter(setRegionCode)(event.target.value)
-                  }
-                >
-                  {REGIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <div className="col-12 col-lg-6">
-                <span className="dd-label d-block">태그</span>
-                <div className="d-flex flex-wrap gap-2">
-                  {TAG_OPTIONS.map((tag) => {
-                    const selected = tags.includes(tag);
-                    return (
-                      <button
-                        key={tag}
-                        type="button"
-                        className={
-                          "dd-tab" + (selected ? " is-active" : "")
-                        }
-                        onClick={() => toggleTag(tag)}
-                      >
-                        {tag}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
             </div>
             <div className="d-flex justify-content-end mt-3">
               <button
@@ -510,9 +388,9 @@ export default function PoliciesPage() {
 
         <div className="mt-3 d-flex justify-content-between gap-3">
           <p className="mb-0 dd-subtle" style={{ fontSize: 14 }}>
-            총 {meta.total}개 정책
+            {loading ? "정책 목록을 불러오는 중이에요." : `총 ${meta.total || 0}개 정책`}
           </p>
-          {meta.total_pages > 0 && (
+          {!loading && meta.total_pages > 0 && (
             <p className="mb-0 dd-subtle" style={{ fontSize: 13 }}>
               {meta.page} / {meta.total_pages} 페이지
             </p>
@@ -520,19 +398,13 @@ export default function PoliciesPage() {
         </div>
 
         {favoriteError && (
-          <p
-            className="dd-disclaimer mt-3 mb-0"
-            style={{ color: "var(--dd-coral)" }}
-          >
+          <p className="dd-disclaimer mt-3 mb-0" style={{ color: "var(--dd-coral)" }}>
             <Icon name="CircleAlert" size={13} /> {favoriteError}
           </p>
         )}
 
         {error && (
-          <div
-            className="dd-card-soft mt-4 text-center"
-            style={{ padding: 32, color: "var(--dd-coral)" }}
-          >
+          <div className="dd-card-soft mt-4 text-center" style={{ padding: 32, color: "var(--dd-coral)" }}>
             <p className="mb-3">{error}</p>
             <button
               type="button"
@@ -574,11 +446,8 @@ export default function PoliciesPage() {
                         }
                         onClick={() => toggleBasket(policy)}
                       >
-                        <Icon
-                          name={inBasket ? "Check" : "GitCompare"}
-                          size={15}
-                        />
-                        {inBasket ? "비교 담음" : "비교 담기"}
+                        <Icon name={inBasket ? "Check" : "GitCompare"} size={15} />
+                        {inBasket ? "비교 담김" : "비교 담기"}
                       </button>
                     </PolicyCard>
                   </div>
@@ -587,10 +456,7 @@ export default function PoliciesPage() {
 
               {policies.length === 0 && (
                 <div className="col-12">
-                  <div
-                    className="dd-card-soft text-center"
-                    style={{ padding: 40, color: "var(--dd-stone-500)" }}
-                  >
+                  <div className="dd-card-soft text-center" style={{ padding: 40, color: "var(--dd-stone-500)" }}>
                     검색 결과가 없어요. 다른 조건으로 찾아보세요.
                   </div>
                 </div>
@@ -620,10 +486,7 @@ export default function PoliciesPage() {
                       onClick={() => goToPage(pageNumber)}
                       aria-current={isCurrent ? "page" : undefined}
                       aria-label={`${pageNumber}페이지로 이동`}
-                      style={{
-                        minWidth: 38,
-                        justifyContent: "center",
-                      }}
+                      style={{ minWidth: 38, justifyContent: "center" }}
                     >
                       {pageNumber}
                     </button>
