@@ -69,6 +69,9 @@ export const DEFAULT_FAMILY = {
   income: "mid1",
   region: "seoul",
   special: [],
+  // 신청자(보호자) 본인 나이. 빈 값이면 미입력(추천에 보내지 않음).
+  // 자녀 나이와 구분해 청소년산모 등 신청자 나이 기반 정책 오탐을 막는다.
+  age: "",
 };
 
 export function normalizeFamilyProfile(family = {}) {
@@ -115,6 +118,12 @@ export function createRecommendationPayload(family = DEFAULT_FAMILY) {
     }
   }
 
+  // 신청자 나이는 enum이 아니라 선택적 숫자. 유효한 값일 때만 보낸다.
+  const ageNum = Number.parseInt(profile.age, 10);
+  if (Number.isFinite(ageNum) && ageNum > 0 && ageNum < 120) {
+    payload.age = ageNum;
+  }
+
   return payload;
 }
 
@@ -135,6 +144,10 @@ export function familyRows(family = DEFAULT_FAMILY) {
     { label: "자녀 연령대", value: labelOf("childAge", profile.childAge) },
     { label: "가구 소득", value: labelOf("income", profile.income) },
     { label: "거주 지역", value: labelOf("region", profile.region) },
+    {
+      label: "신청자 나이",
+      value: profile.age ? `${profile.age}세` : "미입력",
+    },
     {
       label: "특수 상황",
       value:

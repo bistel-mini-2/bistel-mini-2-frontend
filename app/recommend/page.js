@@ -214,6 +214,29 @@ export default function RecommendPage() {
                 </div>
               </div>
 
+              {/* 신청자 나이 — 자녀 나이와 구분(청소년산모 등 신청자 나이 기반 정책 정확도) */}
+              <div className="mt-3">
+                <label className="dd-label">
+                  신청자(보호자) 나이{" "}
+                  <span className="dd-subtle" style={{ fontWeight: 400 }}>(선택)</span>
+                </label>
+                <input
+                  type="number"
+                  className="dd-input"
+                  style={{ maxWidth: 200 }}
+                  min={1}
+                  max={120}
+                  inputMode="numeric"
+                  placeholder="예: 34"
+                  value={family.age ?? ""}
+                  onChange={(e) => set("age", e.target.value)}
+                  disabled={isSubmitting}
+                />
+                <p className="dd-subtle mt-1 mb-0" style={{ fontSize: 13 }}>
+                  자녀 나이와 구분해  나이 기준이 있는 정책을 정확히 추천해요.
+                </p>
+              </div>
+
               {/* 자녀 연령 */}
               <div className="mt-4">
                 <label className="dd-label">자녀 연령대 <span className="dd-subtle" style={{ fontWeight: 400 }}>(하나 선택)</span></label>
