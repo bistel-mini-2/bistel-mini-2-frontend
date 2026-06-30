@@ -13,6 +13,7 @@ import { getApiErrorMessage } from "@/apis/axiosConfig";
 import PolicySummaryCard from "@/app/components/PolicySummaryCard";
 import CompareChatCard from "@/app/components/CompareChatCard";
 import EvidencesChat from "@/app/components/EvidencesChat";
+import EligibilityCardChat from "@/app/components/EligibilityCardChat";
 import Header from "@/app/components/Header";
 import Icon from "@/app/components/Icon";
 import NextActions from "@/app/components/NextActions";
@@ -21,12 +22,6 @@ import RecommendChatCard from "@/app/components/RecommendChatCard";
 import RecommendProgress from "@/app/components/RecommendProgress";
 import ChatPromptDock from "@/app/components/ChatPromptDock";
 import { DISCLAIMER_TEXT } from "@/app/data/constants";
-import {
-  getAiStatusPillClass,
-  getRequestStatusUi,
-  getUserStatusUi,
-  isUserStatus,
-} from "@/app/types/aiStatus";
 import { AuthContext } from "@/contexts/AuthContext";
 
 const EXAMPLE_CHIPS = [
@@ -84,7 +79,7 @@ const makeId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16)
 const getErrorMessage = (error) => error?.message || "메시지를 보내지 못했어요. 잠시 후 다시 시도해주세요.";
 const ACTIVE_CHAT_SESSION_STORAGE_KEY = "dodam.activeChatSessionId";
 const SESSION_RESTORE_TIMEOUT_MS = 8000;
-const CHAT_MARKDOWN_REMARK_PLUGINS = [remarkGfm, remarkBreaks];
+const CHAT_MARKDOWN_REMARK_PLUGINS = [[remarkGfm, { singleTilde: false }], remarkBreaks];
 
 const readStoredActiveSessionId = () => {
   if (typeof window === "undefined") return null;
@@ -114,6 +109,15 @@ const formatSessionTime = (value) => {
 
 const getPolicySlug = (policy) =>
   policy?.slug || policy?.policy_slug || policy?.policySlug || policy?.policy_id || policy?.policyId;
+
+const getEligibilityPolicySlug = (eligibility) =>
+  eligibility?.result?.slug ||
+  eligibility?.result?.policy_slug ||
+  eligibility?.result?.policySlug ||
+  eligibility?.sourceRefId ||
+  eligibility?.source_ref_id ||
+  eligibility?.policyId ||
+  eligibility?.policy_id;
 
 const getPolicyName = (policy) =>
   policy?.policy_name || policy?.policyName || policy?.name || null;
@@ -145,7 +149,17 @@ const buildRecommendContent = (conditions) => {
 const hasRecommendIntent = (text) =>
   /추천|맞춤|받을 만|받을 수 있|지원.*찾|지원.*알려|어떤.*지원|무슨.*지원/.test(text);
 
-const SUMMARY_ACTIONS = new Set(["summary", "summary_card"]);
+const SUMMARY_ACTIONS = new Set(["summary", "summary_card", "policy_summary"]);
+
+const getActionKey = (action) =>
+  typeof action === "string" ? action : action?.action || action?.type || action?.key;
+
+const hasAction = (actions, key) => actions.some((action) => getActionKey(action) === key);
+
+const hasSummaryAction = (actions) => actions.some((action) => SUMMARY_ACTIONS.has(getActionKey(action)));
+
+const getMessagePolicies = (message) =>
+  (message?.policies?.length ? message.policies : message?.recommendations) || [];
 
 const REQUEST_STATUS = {
   READY: "READY",
@@ -179,6 +193,13 @@ const getEligibilityRequestId = (response) =>
   response?.data?.requestId ||
   response?.eligibility_request?.request_id ||
   response?.eligibilityRequest?.requestId;
+
+const getMessageEligibilityResult = (message) =>
+  message?.eligibilityResult ||
+  message?.eligibility_result ||
+  message?.raw?.eligibility_result ||
+  message?.raw?.eligibilityResult ||
+  null;
 
 const getEligibilityQuestions = (result) => {
   if (Array.isArray(result?.follow_up_questions)) return result.follow_up_questions;
@@ -306,13 +327,6 @@ const buildEligibilityQuestionKey = (eligibility) => {
   return `${eligibility?.requestId || eligibility?.request_id || ""}:${questionKey}`;
 };
 
-const getEligibilityUserStatus = (result) =>
-  result?.user_status ||
-  result?.userStatus ||
-  result?.result?.user_status ||
-  result?.result?.userStatus ||
-  null;
-
 const getRequestStatusValue = (status) => {
   if (!status) return "";
   if (typeof status === "object") {
@@ -327,23 +341,60 @@ const normalizeEligibilityStatus = (status, questions) => {
   return questions.length > 0 ? REQUEST_STATUS.FOLLOW_UP_REQUIRED : REQUEST_STATUS.PROCESSING;
 };
 
-const getSummaryLines = (summaryCard) => {
-  if (!summaryCard) return [];
-  const lines = summaryCard.lines || summaryCard.summary_lines || summaryCard.summaryLines || summaryCard.bullets;
-  if (Array.isArray(lines)) return lines.slice(0, 3);
-  if (typeof summaryCard.summary === "string") {
-    return summaryCard.summary.split(/\n+/).filter(Boolean).slice(0, 3);
-  }
-  return [];
+const buildEligibilityStateFromResult = (eligibilityResult, base = {}) => {
+  if (!eligibilityResult) return null;
+  const questions = getEligibilityQuestions(eligibilityResult);
+  const status = normalizeEligibilityStatus(eligibilityResult.status, questions);
+  return {
+    ...base,
+    requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || base.requestId || ""),
+    policyId:
+      eligibilityResult.policy_id ||
+      eligibilityResult.policyId ||
+      base.policyId ||
+      "",
+    policyName:
+      eligibilityResult.policy_name ||
+      eligibilityResult.policyName ||
+      base.policyName ||
+      "",
+    sourceType:
+      eligibilityResult.source_type ||
+      eligibilityResult.sourceType ||
+      base.sourceType ||
+      "POLICY_DETAIL",
+    sourceRefId:
+      eligibilityResult.source_ref_id ||
+      eligibilityResult.sourceRefId ||
+      base.sourceRefId ||
+      null,
+    userConditions:
+      eligibilityResult.user_conditions ||
+      eligibilityResult.userConditions ||
+      base.userConditions ||
+      {},
+    status,
+    questions: status === REQUEST_STATUS.FOLLOW_UP_REQUIRED ? questions : [],
+    criteria:
+      eligibilityResult.criteria ||
+      eligibilityResult.criteria_results ||
+      eligibilityResult.criteriaResults ||
+      base.criteria ||
+      [],
+    result: eligibilityResult,
+    error: "",
+    loadingMessage: "",
+  };
 };
 
-const normalizeSummaryList = (summaryCard, keys) => {
-  for (const key of keys) {
-    const value = summaryCard?.[key];
-    if (Array.isArray(value)) return value;
-    if (typeof value === "string" && value.trim()) return [value];
+const getLatestEligibilityFromMessages = (messages) => {
+  for (let index = messages.length - 1; index >= 0; index -= 1) {
+    const message = messages[index];
+    if (message?.role !== "assistant") continue;
+    const eligibilityResult = getMessageEligibilityResult(message);
+    if (eligibilityResult) return buildEligibilityStateFromResult(eligibilityResult);
   }
-  return [];
+  return null;
 };
 
 const CONDITION_VALUE_MAP = {
@@ -552,184 +603,81 @@ function EmptyState({ onChip, onQuickAction, showConditions, conditions, onCondi
   );
 }
 
-function SummaryCard({ summaryCard, actions = [], policySlug, onAnalyzeEligibility }) {
-  if (!summaryCard) return null;
+const getPolicySummaryPayload = (policy, message, index) => {
+  if (index === 0 && message.summaryCard) return message.summaryCard;
+  return policy.summary_card || policy.summaryCard || {
+    summary: policy.summary || policy.reason_summary || policy.reasonSummary || policy.tag || "",
+    target:
+      policy.target ||
+      policy.target_summary ||
+      policy.targetSummary ||
+      policy.eligibility_summary ||
+      policy.eligibilitySummary,
+    benefit:
+      policy.benefit ||
+      policy.benefit_summary ||
+      policy.benefitSummary ||
+      policy.benefit_amount ||
+      policy.benefitAmount,
+    apply:
+      policy.apply_method ||
+      policy.applyMethod ||
+      policy.how_to_apply ||
+      policy.howToApply,
+    key_conditions:
+      policy.key_conditions ||
+      policy.keyConditions ||
+      policy.matched_conditions ||
+      policy.matchedConditions ||
+      [],
+  };
+};
 
-  const title = summaryCard.title || summaryCard.heading || "요약";
-  const lines = getSummaryLines(summaryCard);
-  const keyConditions = normalizeSummaryList(summaryCard, [
-    "key_conditions",
-    "keyConditions",
-    "conditions",
-  ]);
-  const checkPoints = normalizeSummaryList(summaryCard, [
-    "check_points",
-    "checkPoints",
-    "needs_confirmation",
-    "needsConfirmation",
-  ]);
-  const nextActions = summaryCard.next_actions || summaryCard.nextActions || actions;
+const hasPolicySummaryPayload = (policy) => !!(policy?.summary_card || policy?.summaryCard);
 
+const shouldRenderPolicySummaryCards = (message) => {
+  const policies = getMessagePolicies(message);
+  const actions = message.actions || [];
+  if (policies.length !== 1) return false;
+  if (
+    message.applyCard ||
+    hasAction(actions, "apply") ||
+    hasAction(actions, "compare") ||
+    hasAction(actions, "eligibility") ||
+    hasAction(actions, "recommend")
+  ) return false;
   return (
-    <div className="dd-card-soft dd-summary-card-chat" style={{ marginTop: 14, padding: 14 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
-        <span className="dd-icon-tile dd-tile-blue" style={{ width: 32, height: 32 }}>
-          <Icon name="FileText" size={16} />
-        </span>
-        <strong style={{ fontSize: 14, color: "var(--dd-ink)", minWidth: 0, overflowWrap: "anywhere" }}>
-          {title}
-        </strong>
-      </div>
-      {lines.length > 0 && (
-        <ul className="dd-summary-list">
-          {lines.map((line, index) => (
-            <li key={index}>{line}</li>
-          ))}
-        </ul>
-      )}
-      {(keyConditions.length > 0 || checkPoints.length > 0) && (
-        <div className="dd-summary-grid">
-          {keyConditions.length > 0 && (
-            <div>
-              <span className="dd-summary-label">핵심 조건</span>
-              {keyConditions.map((item, index) => (
-                <p key={index}>{item}</p>
-              ))}
-            </div>
-          )}
-          {checkPoints.length > 0 && (
-            <div>
-              <span className="dd-summary-label">확인 필요</span>
-              {checkPoints.map((item, index) => (
-                <p key={index}>{item}</p>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {nextActions?.length > 0 && (
-        <div style={{ marginTop: 12 }}>
-          <NextActions
-            actions={nextActions}
-            policySlug={policySlug}
-            onAnalyzeEligibility={onAnalyzeEligibility}
-          />
-        </div>
-      )}
-    </div>
+    !!message.summaryCard ||
+    hasPolicySummaryPayload(policies[0]) ||
+    hasSummaryAction(actions)
   );
-}
+};
 
-function EligibilityChatPanel({ eligibility }) {
-  if (!eligibility) return null;
-
-  const isProcessing = eligibility.status === REQUEST_STATUS.PROCESSING;
-  const requestUi = getRequestStatusUi(eligibility.status);
-  const userStatus = getEligibilityUserStatus(eligibility.result);
-  const userUi = isUserStatus(userStatus) ? getUserStatusUi(userStatus) : null;
-  const summary =
-    (isProcessing && eligibility.loadingMessage) ||
-    eligibility.result?.summary ||
-    eligibility.result?.reason_summary ||
-    eligibility.result?.reasonSummary ||
-    eligibility.error ||
-    (isProcessing
-      ? "입력한 내용을 기준으로 지원 가능성을 확인하고 있어요."
-      : eligibility.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED
-      ? "정확한 분석을 위해 추가 정보가 필요해요."
-      : "지원 가능성 분석을 진행하고 있어요.");
-  const matched = eligibility.result?.matched_conditions || eligibility.result?.matchedConditions || [];
-  const missing = eligibility.result?.missing_conditions || eligibility.result?.missingConditions || [];
-  const manual = eligibility.result?.manual_check_points || eligibility.result?.manualCheckPoints || [];
-  const questions = eligibility.questions?.length > 0
-    ? eligibility.questions
-    : getEligibilityQuestions(eligibility.result);
+function PolicySummaryCards({ message, onAnalyzeEligibility }) {
+  const policies = getMessagePolicies(message);
+  if (policies.length === 0) return null;
 
   return (
-    <div className="dd-card-soft dd-eligibility-chat-panel" style={{ marginTop: 14, padding: 14 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", gap: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <strong style={{ fontSize: 14, color: "var(--dd-ink)", overflowWrap: "anywhere" }}>
-          {eligibility.policyName} 지원가능성 분석
-        </strong>
-        <span style={{ display: "inline-flex", gap: 6, flexWrap: "wrap" }}>
-          <span className={`dd-pill ${getAiStatusPillClass(requestUi.variant)}`}>
-            {requestUi.label}
-          </span>
-          {userUi && (
-            <span className={`dd-pill ${getAiStatusPillClass(userUi.variant)}`}>
-              {userUi.label}
-            </span>
-          )}
-        </span>
-      </div>
-      <p style={{ margin: "8px 0 0", fontSize: 13, color: "var(--dd-stone-600)", lineHeight: 1.55 }}>
-        {summary}
-      </p>
-      {isProcessing && (
-        <div className="dd-card-soft dd-analysis-progress" style={{ marginTop: 12, padding: 14 }}>
-          <div className="d-flex align-items-start gap-3">
-            <span className="dd-analysis-loader" aria-hidden="true">
-              <Icon name="LoaderCircle" size={18} />
-            </span>
-            <div className="flex-grow-1">
-              <div className="d-flex align-items-center justify-content-between gap-3 flex-wrap">
-                <strong style={{ fontSize: 14 }}>지원 가능성 확인 중</strong>
-                <span className="dd-subtle" style={{ fontSize: 12 }}>
-                  잠시만 기다려 주세요
-                </span>
-              </div>
-              <p className="mb-0 mt-1 dd-subtle" style={{ fontSize: 13 }}>
-                방금 입력한 조건을 정책 기준과 비교하고 있어요.
-              </p>
-              <div className="dd-analysis-bar mt-3" aria-hidden="true">
-                <span style={{ width: "72%" }} />
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-      {eligibility.status === REQUEST_STATUS.FOLLOW_UP_REQUIRED && questions.length > 0 && (
-        <div className="dd-card-soft" style={{ marginTop: 12, padding: 12 }}>
-          <span className="dd-summary-label">부족한 정보</span>
-          {questions.map((question, index) => (
-            <p key={`${question.field_name || question.fieldName || index}`} style={{ margin: index === 0 ? "6px 0 0" : "4px 0 0" }}>
-              {getEligibilityQuestionText(question)}
-              <span style={{ display: "block", marginTop: 2, color: "var(--dd-stone-500)", fontSize: 12 }}>
-                {getEligibilityIssueReason(question)}
-              </span>
-            </p>
-          ))}
-        </div>
-      )}
-      {[matched, missing, manual].some((items) => items.length > 0) && (
-        <div className="dd-summary-grid" style={{ marginTop: 12 }}>
-          {matched.length > 0 && (
-            <div>
-              <span className="dd-summary-label">충족한 조건</span>
-              {matched.slice(0, 3).map((item, index) => <p key={index}>{String(item)}</p>)}
-            </div>
-          )}
-          {missing.length > 0 && (
-            <div>
-              <span className="dd-summary-label">추가 확인</span>
-              {missing.slice(0, 3).map((item, index) => <p key={index}>{String(item)}</p>)}
-            </div>
-          )}
-          {manual.length > 0 && (
-            <div>
-              <span className="dd-summary-label">직접 확인</span>
-              {manual.slice(0, 3).map((item, index) => <p key={index}>{String(item)}</p>)}
-            </div>
-          )}
-        </div>
-      )}
+    <div className="dd-policy-summary-stack">
+      {policies.map((policy, index) => (
+        <PolicySummaryCard
+          key={getPolicySlug(policy) || getPolicyId(policy) || index}
+          policy={policy}
+          summaryCard={getPolicySummaryPayload(policy, message, index)}
+          onAnalyzeEligibility={(nextPolicy) => onAnalyzeEligibility?.(nextPolicy, message)}
+        />
+      ))}
     </div>
   );
 }
 
 function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {}) {
   const actions = message.actions || [];
-  const policies = (message.policies?.length ? message.policies : message.recommendations) || [];
+  const policies = getMessagePolicies(message);
+
+  if (shouldRenderPolicySummaryCards(message)) {
+    return null;
+  }
 
   if (message.applyCard) {
     return (
@@ -741,11 +689,11 @@ function renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId } = {
     );
   }
 
-  if (actions.includes("compare")) {
+  if (hasAction(actions, "compare")) {
     return <CompareChatCard policies={policies} />;
   }
 
-  if (actions.includes("recommend")) {
+  if (hasAction(actions, "recommend")) {
     return (
       <RecommendChatCard
         policies={policies}
@@ -792,6 +740,11 @@ function ChatMarkdown({ content, variant = "assistant", isStreaming = false }) {
             void node;
             return <p {...paragraphProps} />;
           },
+          del: (props) => {
+            const { node, ...delProps } = props;
+            void node;
+            return <span {...delProps} />;
+          },
         }}
       >
         {content}
@@ -804,11 +757,12 @@ function ChatMarkdown({ content, variant = "assistant", isStreaming = false }) {
 function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePolicyId }) {
   const policySlug = getPolicySlug(message.policies?.[0]);
   const actions = message.actions || [];
+  const hasPolicySummaryCard = shouldRenderPolicySummaryCards(message);
   const hasOwnCta =
     !!message.applyCard ||
-    actions.includes("compare") ||
-    actions.includes("recommend") ||
-    actions.some((action) => SUMMARY_ACTIONS.has(typeof action === "string" ? action : action?.action || action?.type));
+    hasPolicySummaryCard ||
+    hasAction(actions, "compare") ||
+    hasAction(actions, "recommend");
 
   return (
     <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
@@ -824,17 +778,9 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, activePo
           <>
             {renderPolicyCards(message, { onAnalyzeEligibility, activePolicyId })}
 
-            {actions.some((a) => SUMMARY_ACTIONS.has(typeof a === "string" ? a : a?.action || a?.type)) && message.summaryCard && message.policies?.[0] ? (
-              <PolicySummaryCard
-                policy={message.policies[0]}
-                summaryCard={message.summaryCard}
-                onAnalyzeEligibility={onAnalyzeEligibility}
-              />
-            ) : message.summaryCard ? (
-              <SummaryCard
-                summaryCard={message.summaryCard}
-                actions={actions}
-                policySlug={policySlug}
+            {hasPolicySummaryCard ? (
+              <PolicySummaryCards
+                message={message}
                 onAnalyzeEligibility={onAnalyzeEligibility}
               />
             ) : null}
@@ -1144,6 +1090,10 @@ export default function ChatPage() {
       setSelectedSessionIds(new Set());
       setActiveSessionId(sessionId);
       setRestoring(true);
+      setSending(false);
+      setRecommendPending(false);
+      setProgStep(0);
+      isRecommendRef.current = false;
       setError("");
       setShowConditions(false);
       setActiveEligibility(null);
@@ -1155,6 +1105,7 @@ export default function ChatPage() {
         });
         if (!controller.signal.aborted) {
           setMessages(restoredMessages);
+          setActiveEligibility(getLatestEligibilityFromMessages(restoredMessages));
         }
       } catch (nextError) {
         if (controller.signal.aborted || nextError?.code === "ERR_CANCELED") {
@@ -1331,6 +1282,7 @@ export default function ChatPage() {
 
       try {
         const response = await eligibilityApi.createRequest({
+          chatSessionId: activeSessionId,
           policyId,
           sourceType: "RECOMMENDATION_RESULT",
           sourceRefId,
@@ -1356,7 +1308,7 @@ export default function ChatPage() {
         }));
       }
     },
-    [addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
+    [activeSessionId, addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
   );
 
   const submitEligibilityAnswer = useCallback(
@@ -1397,6 +1349,7 @@ export default function ChatPage() {
 
       try {
         const response = await eligibilityApi.createRequest({
+          chatSessionId: activeSessionId,
           policyId: activeEligibility.policyId,
           sourceType: activeEligibility.sourceType,
           sourceRefId: activeEligibility.sourceRefId,
@@ -1425,7 +1378,7 @@ export default function ChatPage() {
         setSending(false);
       }
     },
-    [activeEligibility, addError, fetchEligibilityResult, restoring, sending]
+    [activeEligibility, activeSessionId, addError, fetchEligibilityResult, restoring, sending]
   );
 
   const submitRecommendationFilling = useCallback(
@@ -1555,7 +1508,14 @@ export default function ChatPage() {
                 : message
             );
           }
-          return [...prev, { id: streamId, role: "assistant", content: delta, policies: [], evidences: [], actions: [] }];
+          return [...prev, {
+            id: streamId,
+            role: "assistant",
+            content: delta,
+            policies: [],
+            evidences: [],
+            actions: [],
+          }];
         });
       },
       onDone: (payload) => {
@@ -1571,32 +1531,8 @@ export default function ChatPage() {
         const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
         if (eligibilityResult) {
           setActiveEligibility((prev) => {
-            if (!prev) {
-              // 일반 채팅 응답으로 eligibility_result가 직접 내려온 경우
-              return {
-                requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || ""),
-                policyId: eligibilityResult.policy_id || eligibilityResult.policyId || "",
-                policyName: eligibilityResult.policy_name || eligibilityResult.policyName || "",
-                sourceType: eligibilityResult.source_type || eligibilityResult.sourceType || "POLICY_DETAIL",
-                sourceRefId: eligibilityResult.source_ref_id || eligibilityResult.sourceRefId || null,
-                userConditions: eligibilityResult.user_conditions || eligibilityResult.userConditions || {},
-                status: eligibilityResult.status || REQUEST_STATUS.COMPLETED,
-                questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
-                criteria: eligibilityResult.criteria || [],
-                result: eligibilityResult,
-                error: "",
-                loadingMessage: "",
-              };
-            }
-            return {
-              ...prev,
-              requestId: String(eligibilityResult.request_id || eligibilityResult.requestId || prev.requestId),
-              status: eligibilityResult.status || prev.status,
-              questions: eligibilityResult.follow_up_questions || eligibilityResult.followUpQuestions || [],
-              criteria: eligibilityResult.criteria || [],
-              result: eligibilityResult,
-              error: "",
-            };
+            const nextEligibility = buildEligibilityStateFromResult(eligibilityResult, prev || {});
+            return nextEligibility || prev;
           });
         }
       },
@@ -1611,10 +1547,18 @@ export default function ChatPage() {
     if (streamFailed || !streamDone) {
       try {
         const result = await chatApi.sendMessage({ sessionId, content: text });
+        const fallbackAssistantMessage = {
+          ...result.assistantMessage,
+          id: result.assistantMessage.id || makeId("assistant"),
+        };
         setMessages((prev) => [
           ...prev,
-          { ...result.assistantMessage, id: result.assistantMessage.id || makeId("assistant") },
+          fallbackAssistantMessage,
         ]);
+        const eligibilityResult = getMessageEligibilityResult(fallbackAssistantMessage);
+        if (eligibilityResult) {
+          setActiveEligibility((prev) => buildEligibilityStateFromResult(eligibilityResult, prev || {}) || prev);
+        }
       } catch (nextError) {
         setMessages((prev) => prev.filter((message) => message.id !== userMessageId));
         addError(getErrorMessage(nextError), text);
@@ -1696,6 +1640,9 @@ export default function ChatPage() {
     setError("");
     setLastFailedText("");
     setSending(false);
+    setRecommendPending(false);
+    setProgStep(0);
+    isRecommendRef.current = false;
     setRestoring(false);
     setShowConditions(false);
     setActiveEligibility(null);
@@ -1827,9 +1774,7 @@ export default function ChatPage() {
 
         <div className="dd-scroll" ref={scrollRef}>
           <div className="dd-thread">
-            {restoring ? (
-              <TypingIndicator />
-            ) : messages.length === 0 ? (
+            {messages.length === 0 ? (
               <EmptyState
                 onChip={send}
                 onQuickAction={handleQuickAction}
@@ -1863,7 +1808,10 @@ export default function ChatPage() {
                       <Icon name="ShieldCheck" size={20} />
                     </span>
                     <div className="dd-bubble-ai" style={{ flex: 1, minWidth: 0, maxWidth: 660 }}>
-                      <EligibilityChatPanel eligibility={activeEligibility} />
+                      <EligibilityCardChat
+                        eligibility={activeEligibility}
+                        policySlug={getEligibilityPolicySlug(activeEligibility)}
+                      />
                     </div>
                   </div>
                 )}
