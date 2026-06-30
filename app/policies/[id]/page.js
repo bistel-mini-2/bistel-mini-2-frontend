@@ -807,7 +807,11 @@ export default function PolicyDetailPage() {
 
           {/* 유사 정책(벡터+에이전트) — 우측 사이드바, 규칙 기반 관련 정책 섹션을 대체. */}
           <div className="col-12 col-lg-4">
-            <SimilarPolicies policySlug={policy.id || policySlug} limit={4} />
+            <SimilarPolicies
+              policySlug={policy.id || policySlug}
+              limit={4}
+              showCompareAction
+            />
           </div>
         </div>
 
