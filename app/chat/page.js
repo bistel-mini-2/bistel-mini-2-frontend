@@ -103,8 +103,6 @@ const formatSessionTime = (value) => {
   return new Intl.DateTimeFormat("ko-KR", {
     month: "numeric",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   }).format(date);
 };
 
@@ -988,9 +986,16 @@ function Sidebar({
               )}
               <span className="dd-session-copy">
                 <span className="dd-session-t">{session.title}</span>
-                {session.lastMessageAt && (
-                  <span className="dd-session-m">{formatSessionTime(session.lastMessageAt)}</span>
-                )}
+                <span className="dd-session-meta">
+                  {session.badge && (
+                    <span className={`dd-session-badge dd-session-badge--${session.badge.tone}`}>
+                      {session.badge.label}
+                    </span>
+                  )}
+                  {session.lastMessageAt && (
+                    <span className="dd-session-m">{formatSessionTime(session.lastMessageAt)}</span>
+                  )}
+                </span>
               </span>
             </button>
           ))
@@ -1057,6 +1062,7 @@ export default function ChatPage() {
   const [streamingMessageId, setStreamingMessageId] = useState(null);
   const [recommendPending, setRecommendPending] = useState(false);
   const [progStep, setProgStep] = useState(0);
+  const [sseProgress, setSseProgress] = useState(null);
   const [activeEligibility, setActiveEligibility] = useState(null);
   const scrollRef = useRef(null);
   const abortRef = useRef(null);
@@ -1487,6 +1493,7 @@ export default function ChatPage() {
         progTimersRef.current.forEach(clearTimeout);
         progTimersRef.current = [];
         setRecommendPending(false);
+        setSseProgress(null);
       };
 
       const buildAssistantMessage = (requestId, result) => {
@@ -1577,6 +1584,7 @@ export default function ChatPage() {
       progTimersRef.current.forEach(clearTimeout);
       progTimersRef.current = [];
       setRecommendPending(false);
+      setSseProgress(null);
     };
 
     const streamId = makeId("assistant-stream");
@@ -1590,6 +1598,19 @@ export default function ChatPage() {
       content: text,
       accessToken,
       signal: controller.signal,
+      onIntent: (event) => {
+        const HEAVY_INTENTS = ["recommendation", "eligibility", "comparison", "policy_summary"];
+        if (HEAVY_INTENTS.includes(event.intent)) {
+          setRecommendPending(true);
+        }
+      },
+      onProgress: (event) => {
+        // SSE progress 이벤트 수신 시 가짜 타이머를 중단하고 실제 진행 상태로 전환
+        progTimersRef.current.forEach(clearTimeout);
+        progTimersRef.current = [];
+        setRecommendPending(true);
+        setSseProgress(event);
+      },
       onToken: (delta) => {
         if (!delta) return;
         setStreamingMessageId(streamId);
@@ -1921,13 +1942,13 @@ export default function ChatPage() {
                   </div>
                 )}
                 {sending && !streamingMessageId && (
-                  recommendPending ? (
+                  (recommendPending || sseProgress) ? (
                     <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                       <span className="dd-chat-avatar">
                         <Icon name="Sparkles" size={20} />
                       </span>
                       <div className="dd-bubble-ai">
-                        <RecommendProgress activeStep={progStep} />
+                        <RecommendProgress activeStep={progStep} sseProgress={sseProgress} />
                       </div>
                     </div>
                   ) : (
