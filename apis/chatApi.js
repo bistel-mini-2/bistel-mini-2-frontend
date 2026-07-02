@@ -179,6 +179,16 @@ const normalizePolicyItem = (policy) => {
   };
 };
 
+const SESSION_BADGE_RULES = [
+  { keyword: "비교", label: "비교", tone: "blue" },
+  { keyword: "요약", label: "상세", tone: "green" },
+];
+
+const _sessionBadge = (title) => {
+  const rule = SESSION_BADGE_RULES.find((r) => title.includes(r.keyword));
+  return rule ? { label: rule.label, tone: rule.tone } : null;
+};
+
 const normalizeSession = (session) => {
   if (!isObject(session)) return null;
   const id =
@@ -190,9 +200,10 @@ const normalizeSession = (session) => {
 
   if (!id) return null;
 
+  const title = session.title || session.session_title || session.sessionTitle || "새 상담";
   return {
     id: String(id),
-    title: session.title || session.session_title || session.sessionTitle || "새 상담",
+    title,
     lastMessageAt:
       session.last_message_at ||
       session.lastMessageAt ||
@@ -202,6 +213,7 @@ const normalizeSession = (session) => {
       session.createdAt ||
       null,
     status: session.session_status || session.sessionStatus || session.status || null,
+    badge: _sessionBadge(title),
     raw: session,
   };
 };

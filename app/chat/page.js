@@ -20,7 +20,6 @@ import NextActions from "@/app/components/NextActions";
 import PolicyCardChat from "@/app/components/PolicyCardChat";
 import SimilarPolicies from "@/app/components/SimilarPolicies";
 import RecommendChatCard from "@/app/components/RecommendChatCard";
-import RecommendProgress from "@/app/components/RecommendProgress";
 import ChatPromptDock from "@/app/components/ChatPromptDock";
 import { DISCLAIMER_TEXT } from "@/app/data/constants";
 import { AuthContext } from "@/contexts/AuthContext";
@@ -1060,15 +1059,11 @@ export default function ChatPage() {
     special: [],
   });
   const [streamingMessageId, setStreamingMessageId] = useState(null);
-  const [recommendPending, setRecommendPending] = useState(false);
-  const [progStep, setProgStep] = useState(0);
-  const [sseProgress, setSseProgress] = useState(null);
   const [activeEligibility, setActiveEligibility] = useState(null);
   const scrollRef = useRef(null);
   const abortRef = useRef(null);
   const restoreAbortRef = useRef(null);
   const isRecommendRef = useRef(false);
-  const progTimersRef = useRef([]);
   const followUpMessageKeysRef = useRef(new Set());
   const restoredSessionRef = useRef(false);
 
@@ -1176,8 +1171,6 @@ export default function ChatPage() {
       setActiveSessionId(sessionId);
       setRestoring(true);
       setSending(false);
-      setRecommendPending(false);
-      setProgStep(0);
       isRecommendRef.current = false;
       setError("");
       setShowConditions(false);
@@ -1482,19 +1475,6 @@ export default function ChatPage() {
       setInput("");
       setError("");
       setSending(true);
-      setRecommendPending(true);
-      setProgStep(0);
-      progTimersRef.current = [
-        setTimeout(() => setProgStep(1), 700),
-        setTimeout(() => setProgStep(2), 1400),
-      ];
-
-      const clearProgress = () => {
-        progTimersRef.current.forEach(clearTimeout);
-        progTimersRef.current = [];
-        setRecommendPending(false);
-        setSseProgress(null);
-      };
 
       const buildAssistantMessage = (requestId, result) => {
         const followUpQuestions = result.followUpQuestions || [];
@@ -1553,7 +1533,6 @@ export default function ChatPage() {
         );
       } finally {
         setSending(false);
-        clearProgress();
         refreshSessions();
       }
     },
@@ -1571,22 +1550,6 @@ export default function ChatPage() {
     setLastFailedText(text);
     setSending(true);
 
-    if (isRecommend) {
-      setRecommendPending(true);
-      setProgStep(0);
-      progTimersRef.current = [
-        setTimeout(() => setProgStep(1), 700),
-        setTimeout(() => setProgStep(2), 1400),
-      ];
-    }
-
-    const clearProgress = () => {
-      progTimersRef.current.forEach(clearTimeout);
-      progTimersRef.current = [];
-      setRecommendPending(false);
-      setSseProgress(null);
-    };
-
     const streamId = makeId("assistant-stream");
     let streamFailed = false;
     let streamDone = false;
@@ -1598,19 +1561,6 @@ export default function ChatPage() {
       content: text,
       accessToken,
       signal: controller.signal,
-      onIntent: (event) => {
-        const HEAVY_INTENTS = ["recommendation", "eligibility", "comparison", "policy_summary"];
-        if (HEAVY_INTENTS.includes(event.intent)) {
-          setRecommendPending(true);
-        }
-      },
-      onProgress: (event) => {
-        // SSE progress 이벤트 수신 시 가짜 타이머를 중단하고 실제 진행 상태로 전환
-        progTimersRef.current.forEach(clearTimeout);
-        progTimersRef.current = [];
-        setRecommendPending(true);
-        setSseProgress(event);
-      },
       onToken: (delta) => {
         if (!delta) return;
         setStreamingMessageId(streamId);
@@ -1635,7 +1585,6 @@ export default function ChatPage() {
       },
       onDone: (payload) => {
         streamDone = true;
-        clearProgress();
         const responseData = payload?.data || payload;
         const assistantPayload = responseData?.assistant_message || responseData?.assistantMessage || responseData;
         const assistantMessage = normalizeAssistantMessage(assistantPayload);
@@ -1651,7 +1600,7 @@ export default function ChatPage() {
           });
         }
       },
-      onError: () => { streamFailed = true; clearProgress(); },
+      onError: () => { streamFailed = true; },
     });
 
     if (!streamDone) {
@@ -1682,7 +1631,6 @@ export default function ChatPage() {
 
     setSending(false);
     setStreamingMessageId(null);
-    clearProgress();
     abortRef.current = null;
     refreshSessions();
   }, [accessToken, addError, refreshSessions]);
@@ -1765,8 +1713,6 @@ export default function ChatPage() {
     setError("");
     setLastFailedText("");
     setSending(false);
-    setRecommendPending(false);
-    setProgStep(0);
     isRecommendRef.current = false;
     setRestoring(false);
     setShowConditions(false);
@@ -1942,18 +1888,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 {sending && !streamingMessageId && (
-                  (recommendPending || sseProgress) ? (
-                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                      <span className="dd-chat-avatar">
-                        <Icon name="Sparkles" size={20} />
-                      </span>
-                      <div className="dd-bubble-ai">
-                        <RecommendProgress activeStep={progStep} sseProgress={sseProgress} />
-                      </div>
-                    </div>
-                  ) : (
-                    <TypingIndicator />
-                  )
+                  <TypingIndicator />
                 )}
               </div>
             )}

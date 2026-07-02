@@ -2178,9 +2178,31 @@ body {
 .dd-session.is-active .dd-session-t {
   color: var(--dd-coral-strong);
 }
+.dd-session-meta {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
 .dd-session-m {
   font-size: 11px;
   color: var(--dd-stone-400);
+}
+.dd-session-badge {
+  display: inline-block;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.4;
+  flex: none;
+}
+.dd-session-badge--blue {
+  background: var(--dd-blue-50);
+  color: var(--dd-blue);
+}
+.dd-session-badge--green {
+  background: var(--dd-green-50);
+  color: var(--dd-green);
 }
 .dd-side-foot {
   border-top: 1px solid var(--dd-stone-100);
