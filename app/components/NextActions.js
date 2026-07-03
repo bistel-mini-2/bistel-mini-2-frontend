@@ -45,7 +45,7 @@ const normalizeAction = (action, index) => {
 export default function NextActions({ actions = [], policySlug }) {
   const normalized = actions
     .map(normalizeAction)
-    .filter((item) => item?.action && item.action !== "chat")
+    .filter((item) => item?.action && item.action !== "chat" && item.action !== "eligibility")
     .slice(0, 3)
     .map((item, index) => ({ ...item, primary: index === 0 }));
 

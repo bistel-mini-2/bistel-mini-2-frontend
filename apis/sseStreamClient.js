@@ -1,12 +1,8 @@
 // =========================================================================
-// 채팅 메시지 SSE 스트림 클라이언트
-// 백엔드 POST /api/v1/chat/sessions/{id}/messages/stream 를 호출하고,
-// 토큰 단위 응답을 콜백으로 흘려보낸다.
-// axios는 브라우저에서 ReadableStream을 안 노출해서 fetch로 직접 처리.
+// 범용 POST SSE 스트림 클라이언트
+// POST body가 필요한 SSE 엔드포인트 전용 (EventSource는 GET만 지원).
+// 추천(/recommendations/requests/stream), 지원가능성(/eligibility/requests/stream) 등에 사용.
 // =========================================================================
-
-const streamPath = (sessionId) =>
-  `/api/v1/chat/sessions/${encodeURIComponent(sessionId)}/messages/stream`;
 
 const parseSseEventBlock = (raw) => {
   const lines = raw.split("\n");
@@ -27,59 +23,17 @@ const parseSseEventBlock = (raw) => {
   }
 };
 
-const dispatchEvent = (event, { onToken, onDone, onError, onProgress, onIntent }) => {
-  if (!event || typeof event !== "object") return false;
-
-  if (event.type === "token") {
-    onToken?.(typeof event.delta === "string" ? event.delta : "");
-    return false;
-  }
-
-  if (event.type === "done") {
-    onDone?.(event.payload);
-    return true;
-  }
-
-  if (event.type === "error") {
-    onError?.({
-      code: event.code || "STREAM_ERROR",
-      message: event.message || "응답을 받는 중 문제가 생겼어요.",
-    });
-    return true;
-  }
-
-  if (event.type === "progress") {
-    onProgress?.(event);
-    return false;
-  }
-
-  if (event.type === "intent") {
-    onIntent?.(event);
-    return false;
-  }
-
-  return false;
-};
-
-export async function sendMessageStream({
-  sessionId,
-  content,
-  accessToken,
-  signal,
-  onToken,
-  onDone,
-  onError,
-  onProgress,
-  onIntent,
-}) {
-  if (!sessionId) {
-    onError?.({
-      code: "SESSION_ID_REQUIRED",
-      message: "세션 정보가 없어서 메시지를 보낼 수 없어요.",
-    });
-    return;
-  }
-
+/**
+ * @param {object} options
+ * @param {string}   options.url           - 경로 (baseUrl 제외). 예: "/api/v1/recommendations/requests/stream"
+ * @param {object}   options.body          - 요청 body (JSON으로 직렬화)
+ * @param {string}  [options.accessToken]  - Bearer 토큰
+ * @param {AbortSignal} [options.signal]   - AbortController signal
+ * @param {function} [options.onProgress]  - (event) => void  progress 이벤트 수신 시
+ * @param {function} [options.onDone]      - (payload) => void done 이벤트 수신 시
+ * @param {function} [options.onError]     - ({ code, message }) => void
+ */
+export async function postSseStream({ url, body, accessToken, signal, onProgress, onDone, onError }) {
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "";
   const headers = {
     "Content-Type": "application/json",
@@ -91,10 +45,10 @@ export async function sendMessageStream({
 
   let response;
   try {
-    response = await fetch(`${baseUrl}${streamPath(sessionId)}`, {
+    response = await fetch(`${baseUrl}${url}`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ content }),
+      body: JSON.stringify(body),
       signal,
     });
   } catch (error) {
@@ -112,7 +66,7 @@ export async function sendMessageStream({
       message:
         response.status === 401
           ? "로그인이 만료됐어요. 다시 로그인해주세요."
-          : "메시지를 보내지 못했어요. 잠시 후 다시 시도해주세요.",
+          : "요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요.",
     });
     return;
   }
@@ -121,6 +75,23 @@ export async function sendMessageStream({
   const decoder = new TextDecoder("utf-8");
   let buffer = "";
   let finished = false;
+
+  const dispatch = (event) => {
+    if (!event || typeof event !== "object") return;
+
+    if (event.type === "progress") {
+      onProgress?.(event);
+    } else if (event.type === "done") {
+      onDone?.(event.payload);
+      finished = true;
+    } else if (event.type === "error") {
+      onError?.({
+        code: event.code || "STREAM_ERROR",
+        message: event.message || "오류가 발생했어요.",
+      });
+      finished = true;
+    }
+  };
 
   try {
     while (true) {
@@ -132,18 +103,14 @@ export async function sendMessageStream({
       while (boundary !== -1) {
         const block = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
-        const event = parseSseEventBlock(block);
-        const isTerminal = dispatchEvent(event, { onToken, onDone, onError, onProgress, onIntent });
-        if (isTerminal) finished = true;
+        dispatch(parseSseEventBlock(block));
         boundary = buffer.indexOf("\n\n");
       }
     }
 
     buffer += decoder.decode().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     if (buffer.trim().length > 0) {
-      const event = parseSseEventBlock(buffer);
-      const isTerminal = dispatchEvent(event, { onToken, onDone, onError, onProgress, onIntent });
-      if (isTerminal) finished = true;
+      dispatch(parseSseEventBlock(buffer));
     }
 
     if (!finished) {

@@ -20,7 +20,6 @@ import NextActions from "@/app/components/NextActions";
 import PolicyCardChat from "@/app/components/PolicyCardChat";
 import SimilarPolicies from "@/app/components/SimilarPolicies";
 import RecommendChatCard from "@/app/components/RecommendChatCard";
-import RecommendProgress from "@/app/components/RecommendProgress";
 import ChatPromptDock from "@/app/components/ChatPromptDock";
 import { DISCLAIMER_TEXT } from "@/app/data/constants";
 import { AuthContext } from "@/contexts/AuthContext";
@@ -103,8 +102,6 @@ const formatSessionTime = (value) => {
   return new Intl.DateTimeFormat("ko-KR", {
     month: "numeric",
     day: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
   }).format(date);
 };
 
@@ -988,9 +985,16 @@ function Sidebar({
               )}
               <span className="dd-session-copy">
                 <span className="dd-session-t">{session.title}</span>
-                {session.lastMessageAt && (
-                  <span className="dd-session-m">{formatSessionTime(session.lastMessageAt)}</span>
-                )}
+                <span className="dd-session-meta">
+                  {session.badge && (
+                    <span className={`dd-session-badge dd-session-badge--${session.badge.tone}`}>
+                      {session.badge.label}
+                    </span>
+                  )}
+                  {session.lastMessageAt && (
+                    <span className="dd-session-m">{formatSessionTime(session.lastMessageAt)}</span>
+                  )}
+                </span>
               </span>
             </button>
           ))
@@ -1055,14 +1059,11 @@ export default function ChatPage() {
     special: [],
   });
   const [streamingMessageId, setStreamingMessageId] = useState(null);
-  const [recommendPending, setRecommendPending] = useState(false);
-  const [progStep, setProgStep] = useState(0);
   const [activeEligibility, setActiveEligibility] = useState(null);
   const scrollRef = useRef(null);
   const abortRef = useRef(null);
   const restoreAbortRef = useRef(null);
   const isRecommendRef = useRef(false);
-  const progTimersRef = useRef([]);
   const followUpMessageKeysRef = useRef(new Set());
   const restoredSessionRef = useRef(false);
 
@@ -1170,8 +1171,6 @@ export default function ChatPage() {
       setActiveSessionId(sessionId);
       setRestoring(true);
       setSending(false);
-      setRecommendPending(false);
-      setProgStep(0);
       isRecommendRef.current = false;
       setError("");
       setShowConditions(false);
@@ -1476,18 +1475,6 @@ export default function ChatPage() {
       setInput("");
       setError("");
       setSending(true);
-      setRecommendPending(true);
-      setProgStep(0);
-      progTimersRef.current = [
-        setTimeout(() => setProgStep(1), 700),
-        setTimeout(() => setProgStep(2), 1400),
-      ];
-
-      const clearProgress = () => {
-        progTimersRef.current.forEach(clearTimeout);
-        progTimersRef.current = [];
-        setRecommendPending(false);
-      };
 
       const buildAssistantMessage = (requestId, result) => {
         const followUpQuestions = result.followUpQuestions || [];
@@ -1546,7 +1533,6 @@ export default function ChatPage() {
         );
       } finally {
         setSending(false);
-        clearProgress();
         refreshSessions();
       }
     },
@@ -1563,21 +1549,6 @@ export default function ChatPage() {
     setError("");
     setLastFailedText(text);
     setSending(true);
-
-    if (isRecommend) {
-      setRecommendPending(true);
-      setProgStep(0);
-      progTimersRef.current = [
-        setTimeout(() => setProgStep(1), 700),
-        setTimeout(() => setProgStep(2), 1400),
-      ];
-    }
-
-    const clearProgress = () => {
-      progTimersRef.current.forEach(clearTimeout);
-      progTimersRef.current = [];
-      setRecommendPending(false);
-    };
 
     const streamId = makeId("assistant-stream");
     let streamFailed = false;
@@ -1614,7 +1585,6 @@ export default function ChatPage() {
       },
       onDone: (payload) => {
         streamDone = true;
-        clearProgress();
         const responseData = payload?.data || payload;
         const assistantPayload = responseData?.assistant_message || responseData?.assistantMessage || responseData;
         const assistantMessage = normalizeAssistantMessage(assistantPayload);
@@ -1630,7 +1600,7 @@ export default function ChatPage() {
           });
         }
       },
-      onError: () => { streamFailed = true; clearProgress(); },
+      onError: () => { streamFailed = true; },
     });
 
     if (!streamDone) {
@@ -1661,7 +1631,6 @@ export default function ChatPage() {
 
     setSending(false);
     setStreamingMessageId(null);
-    clearProgress();
     abortRef.current = null;
     refreshSessions();
   }, [accessToken, addError, refreshSessions]);
@@ -1744,8 +1713,6 @@ export default function ChatPage() {
     setError("");
     setLastFailedText("");
     setSending(false);
-    setRecommendPending(false);
-    setProgStep(0);
     isRecommendRef.current = false;
     setRestoring(false);
     setShowConditions(false);
@@ -1921,18 +1888,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 {sending && !streamingMessageId && (
-                  recommendPending ? (
-                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                      <span className="dd-chat-avatar">
-                        <Icon name="Sparkles" size={20} />
-                      </span>
-                      <div className="dd-bubble-ai">
-                        <RecommendProgress activeStep={progStep} />
-                      </div>
-                    </div>
-                  ) : (
-                    <TypingIndicator />
-                  )
+                  <TypingIndicator />
                 )}
               </div>
             )}
