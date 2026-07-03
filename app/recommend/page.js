@@ -8,7 +8,7 @@
 // =========================================================================
 import { useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { postSseStream } from "@/apis/sseStreamClient";
+import { streamRecommendationRequest } from "@/apis/recommendationApi";
 import familyProfileApi from "@/apis/familyProfileApi";
 import { AuthContext } from "@/contexts/AuthContext";
 import Header from "@/app/components/Header";
@@ -37,7 +37,17 @@ export default function RecommendPage() {
   // 저장 프로필 자동 반영은 1회만, 그리고 사용자가 이미 폼을 건드렸으면 덮어쓰지 않는다.
   const hydratedRef = useRef(false);
   const userEditedRef = useRef(false);
+  const mountedRef = useRef(false);
   const abortRef = useRef(null);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      abortRef.current?.abort();
+      abortRef.current = null;
+    };
+  }, []);
 
   const set = (key, value) => {
     userEditedRef.current = true;
@@ -97,6 +107,12 @@ export default function RecommendPage() {
       return;
     }
 
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsSubmitting(true);
+    setSubmitError("");
+
     const selectedConditions = createRecommendationPayload(normalizedFamily);
     const trimmedRawQuery = rawQuery.trim();
     const recommendationPayload = {
@@ -104,30 +120,21 @@ export default function RecommendPage() {
       ...(trimmedRawQuery ? { raw_query: trimmedRawQuery } : {}),
       selected_conditions: selectedConditions,
     };
+    let completed = false;
 
-    setIsSubmitting(true);
-    setSubmitError("");
-
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    await postSseStream({
-      url: RECOMMENDATION_STREAM_PATH,
-      body: recommendationPayload,
+    await streamRecommendationRequest({
+      payload: recommendationPayload,
       accessToken,
       signal: controller.signal,
       onDone: (payload) => {
-        const requestId =
-          payload?.request_id ||
-          payload?.requestId ||
-          payload?.data?.request_id ||
-          payload?.data?.requestId;
-
+        if (controller.signal.aborted || !mountedRef.current) return;
+        const requestId = payload?.request_id || payload?.requestId || payload?.data?.request_id || payload?.data?.requestId;
         if (!requestId) {
           setSubmitError("추천 요청 ID를 확인하지 못했어요. 잠시 후 다시 시도해주세요.");
           setIsSubmitting(false);
           return;
         }
+        completed = true;
 
         if (typeof window !== "undefined") {
           window.localStorage.setItem(
@@ -141,18 +148,28 @@ export default function RecommendPage() {
           );
         }
 
-        router.push(`/recommend/result?requestId=${encodeURIComponent(requestId)}`);
+        if (!controller.signal.aborted && mountedRef.current) {
+          router.push(`/recommend/result?requestId=${encodeURIComponent(requestId)}`);
+        }
       },
       onError: (error) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || !mountedRef.current) return;
         setSubmitError(
-          error.message || "추천 요청을 처리하지 못했어요. 잠시 후 다시 시도해주세요."
+          getApiErrorMessage(
+            error,
+            "추천 요청을 생성하지 못했어요. 잠시 후 다시 시도해주세요."
+          )
         );
         setIsSubmitting(false);
       },
     });
 
-    abortRef.current = null;
+    if (abortRef.current === controller) {
+      abortRef.current = null;
+    }
+    if (!completed && !controller.signal.aborted && mountedRef.current) {
+      setIsSubmitting(false);
+    }
   };
 
   return (

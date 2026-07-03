@@ -1,4 +1,5 @@
 import { axios } from "./axiosConfig";
+import { postSseStream } from "./sseStreamClient";
 
 const RECOMMENDATIONS_BASE_PATH = "/api/v1/recommendations/requests";
 
@@ -225,6 +226,24 @@ export const createRecommendationRequest = async (payload) => {
   };
 };
 
+export const streamRecommendationRequest = ({
+  payload,
+  accessToken,
+  signal,
+  onProgress,
+  onDone,
+  onError,
+}) =>
+  postSseStream({
+    url: `${RECOMMENDATIONS_BASE_PATH}/stream`,
+    body: payload,
+    accessToken,
+    signal,
+    onProgress,
+    onDone,
+    onError,
+  });
+
 export const getRecommendationResult = async (requestId) => {
   if (!requestId) {
     const error = new Error("추천 요청 ID를 확인하지 못했어요.");
@@ -274,6 +293,7 @@ export const submitRecommendationAnswers = async (requestId, answers = []) => {
 
 const recommendationApi = {
   createRecommendationRequest,
+  streamRecommendationRequest,
   getRecommendationResult,
   getRecommendationHistory,
   submitRecommendationAnswers,

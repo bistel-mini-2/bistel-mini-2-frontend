@@ -78,8 +78,31 @@ const SPECIAL_OPTIONS = ["한부모", "다자녀", "맞벌이", "장애", "다�
 const makeId = (prefix) => `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
 const getErrorMessage = (error) => error?.message || "메시지를 보내지 못했어요. 잠시 후 다시 시도해주세요.";
 const ACTIVE_CHAT_SESSION_STORAGE_KEY = "dodam.activeChatSessionId";
+const CHAT_PENDING_REQUESTS_STORAGE_KEY = "dodam.chat.pendingRequests.v1";
 const SESSION_RESTORE_TIMEOUT_MS = 8000;
+const CHAT_RECOVERY_MAX_WAIT_MS = 45000;
+const CHAT_RECOVERY_BASE_DELAY_MS = 1200;
 const CHAT_MARKDOWN_REMARK_PLUGINS = [[remarkGfm, { singleTilde: false }], remarkBreaks];
+
+const CHAT_REQUEST_UI_STATUS = {
+  SENDING: "sending",
+  PROCESSING: "processing",
+  COMPLETED: "completed",
+  FAILED: "failed",
+  RECONNECTING: "reconnecting",
+  CANCELLED: "cancelled",
+};
+
+const CHAT_PROGRESS_TEXT = {
+  accepted: "요청을 확인하고 있어요",
+  processing: "요청은 정상적으로 처리 중이에요.",
+  reconnecting: "응답을 다시 연결하고 있어요.",
+  failed: "응답을 완료하지 못했어요. 다시 시도해 주세요.",
+  cancelled: "요청이 취소됐어요.",
+  analyzing: "조건을 분석하고 있어요",
+  searching: "관련 정책을 찾고 있어요",
+  composing: "결과를 정리하고 있어요",
+};
 
 const readStoredActiveSessionId = () => {
   if (typeof window === "undefined") return null;
@@ -93,6 +116,90 @@ const storeActiveSessionId = (sessionId) => {
   } else {
     window.sessionStorage.removeItem(ACTIVE_CHAT_SESSION_STORAGE_KEY);
   }
+};
+
+const readPendingChatRequests = () => {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.sessionStorage.getItem(CHAT_PENDING_REQUESTS_STORAGE_KEY);
+    const parsed = raw ? JSON.parse(raw) : {};
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+  } catch {
+    return {};
+  }
+};
+
+const writePendingChatRequests = (requests) => {
+  if (typeof window === "undefined") return;
+  const entries = Object.entries(requests || {}).filter(([, value]) => value?.sessionId);
+  if (entries.length === 0) {
+    window.sessionStorage.removeItem(CHAT_PENDING_REQUESTS_STORAGE_KEY);
+    return;
+  }
+  window.sessionStorage.setItem(CHAT_PENDING_REQUESTS_STORAGE_KEY, JSON.stringify(Object.fromEntries(entries)));
+};
+
+const storePendingChatRequest = (pending) => {
+  if (!pending?.sessionId) return;
+  const requests = readPendingChatRequests();
+  requests[String(pending.sessionId)] = {
+    ...requests[String(pending.sessionId)],
+    ...pending,
+    sessionId: String(pending.sessionId),
+    updatedAt: new Date().toISOString(),
+  };
+  writePendingChatRequests(requests);
+};
+
+const clearPendingChatRequest = (sessionId, requestId) => {
+  if (!sessionId) return;
+  const requests = readPendingChatRequests();
+  const current = requests[String(sessionId)];
+  if (!current) return;
+  if (requestId && current.requestId && String(current.requestId) !== String(requestId)) return;
+  delete requests[String(sessionId)];
+  writePendingChatRequests(requests);
+};
+
+const createIdempotencyKey = () => {
+  if (typeof crypto !== "undefined" && crypto.randomUUID) {
+    return crypto.randomUUID();
+  }
+  return `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+};
+
+const getChatRequestId = (eventOrPayload) =>
+  eventOrPayload?.request_id ||
+  eventOrPayload?.requestId ||
+  eventOrPayload?.data?.request_id ||
+  eventOrPayload?.data?.requestId ||
+  null;
+
+const normalizeChatRequestStatusValue = (status) => {
+  const value = String(status || "").toLowerCase();
+  if (value === "completed") return CHAT_REQUEST_UI_STATUS.COMPLETED;
+  if (value === "failed") return CHAT_REQUEST_UI_STATUS.FAILED;
+  if (value === "cancelled") return CHAT_REQUEST_UI_STATUS.CANCELLED;
+  if (value === "processing") return CHAT_REQUEST_UI_STATUS.PROCESSING;
+  return value || CHAT_REQUEST_UI_STATUS.PROCESSING;
+};
+
+const getProgressMessage = (event) => {
+  const text = `${event?.node || ""} ${event?.flow || ""} ${event?.label || ""}`.toLowerCase();
+  if (/condition|profile|slot|분석|조건/.test(text)) return CHAT_PROGRESS_TEXT.analyzing;
+  if (/search|candidate|rag|policy|retriev|검색|정책|후보/.test(text)) return CHAT_PROGRESS_TEXT.searching;
+  if (/compose|summary|answer|result|respond|정리|결과|요약/.test(text)) return CHAT_PROGRESS_TEXT.composing;
+  return CHAT_PROGRESS_TEXT.processing;
+};
+
+const mergeAssistantMessage = (messages, assistantMessage, replaceId) => {
+  const nextMessageId = String(assistantMessage?.id || "");
+  const exists = nextMessageId && messages.some((message) => String(message.id) === nextMessageId);
+  if (exists) {
+    return messages.filter((message) => message.id !== replaceId);
+  }
+  const withoutTemporary = messages.filter((message) => message.id !== replaceId);
+  return [...withoutTemporary, assistantMessage];
 };
 
 const formatSessionTime = (value) => {
@@ -814,7 +921,51 @@ function CompareGuideChatCard({ content }) {
   );
 }
 
-function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSimilar, activePolicyId }) {
+function RequestStatusMessage({ message, onRetryRequest }) {
+  if (!message.requestStatus || message.requestStatus === CHAT_REQUEST_UI_STATUS.COMPLETED) {
+    return null;
+  }
+
+  const isFailed = message.requestStatus === CHAT_REQUEST_UI_STATUS.FAILED;
+  const statusText =
+    message.statusText ||
+    (isFailed
+      ? CHAT_PROGRESS_TEXT.failed
+      : message.requestStatus === CHAT_REQUEST_UI_STATUS.RECONNECTING
+        ? CHAT_PROGRESS_TEXT.reconnecting
+        : message.requestStatus === CHAT_REQUEST_UI_STATUS.CANCELLED
+          ? CHAT_PROGRESS_TEXT.cancelled
+          : CHAT_PROGRESS_TEXT.processing);
+
+  return (
+    <div style={{ marginTop: message.content ? 10 : 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--dd-stone-500)", fontSize: 12 }}>
+        {!isFailed && message.requestStatus !== CHAT_REQUEST_UI_STATUS.CANCELLED && (
+          <>
+            <span className="dd-typing-dot" style={{ animationDelay: "0s" }} />
+            <span className="dd-typing-dot" style={{ animationDelay: ".15s" }} />
+            <span className="dd-typing-dot" style={{ animationDelay: ".3s" }} />
+          </>
+        )}
+        {isFailed && <Icon name="CircleAlert" size={14} />}
+        {message.requestStatus === CHAT_REQUEST_UI_STATUS.CANCELLED && <Icon name="X" size={14} />}
+        <span>{statusText}</span>
+      </div>
+      {isFailed && (
+        <button
+          type="button"
+          className="dd-btn dd-btn-ghost dd-btn-sm"
+          style={{ marginTop: 10 }}
+          onClick={() => onRetryRequest?.(message)}
+        >
+          <Icon name="Repeat" size={14} /> 다시 시도
+        </button>
+      )}
+    </div>
+  );
+}
+
+function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSimilar, activePolicyId, onRetryRequest }) {
   const policySlug = getPolicySlug(message.policies?.[0]);
   const actions = message.actions || [];
   const compareGuideContent = parseCompareGuideContent(message.content);
@@ -838,6 +989,7 @@ function AssistantMessage({ message, isStreaming, onAnalyzeEligibility, onAskSim
         {message.content && !isCompareGuide && (
           <ChatMarkdown content={message.content} isStreaming={isStreaming} />
         )}
+        <RequestStatusMessage message={message} onRetryRequest={onRetryRequest} />
         {isCompareGuide && (
           <>
             {compareGuideContent.intro && (
@@ -1063,9 +1215,12 @@ export default function ChatPage() {
   const scrollRef = useRef(null);
   const abortRef = useRef(null);
   const restoreAbortRef = useRef(null);
+  const recoveryAbortRef = useRef(null);
+  const mountedRef = useRef(false);
   const isRecommendRef = useRef(false);
   const followUpMessageKeysRef = useRef(new Set());
   const restoredSessionRef = useRef(false);
+  const recoveryStartedRef = useRef(new Set());
 
   const contextPolicy = useMemo(() => getContextPolicy(messages), [messages]);
 
@@ -1102,6 +1257,11 @@ export default function ChatPage() {
     return sessions.find((s) => s.id === activeSessionId)?.title || "상담";
   }, [messages.length, activeSessionId, sessions]);
 
+  const hasPendingChatRequest = useMemo(
+    () => messages.some((message) => message.role === "assistant" && message.requestStatus && message.requestStatus !== CHAT_REQUEST_UI_STATUS.COMPLETED),
+    [messages]
+  );
+
   const refreshSessions = useCallback(async () => {
     if (authLoading || !isAuthenticated) return;
     const controller = new AbortController();
@@ -1130,9 +1290,15 @@ export default function ChatPage() {
   }, [activeEligibility, messages, sending, restoring, error]);
 
   useEffect(() => {
+    mountedRef.current = true;
     return () => {
+      mountedRef.current = false;
       abortRef.current?.abort();
       restoreAbortRef.current?.abort();
+      recoveryAbortRef.current?.abort();
+      abortRef.current = null;
+      restoreAbortRef.current = null;
+      recoveryAbortRef.current = null;
     };
   }, []);
 
@@ -1539,29 +1705,220 @@ export default function ChatPage() {
     [addError, authLoading, isAuthenticated, refreshSessions, restoring, sending]
   );
 
-  const finalizeSend = useCallback(async (sessionId, text) => {
+  const updateRequestMessage = useCallback((messageId, patch) => {
+    setMessages((prev) =>
+      prev.map((message) =>
+        message.id === messageId
+          ? { ...message, ...patch }
+          : message
+      )
+    );
+  }, []);
+
+  const applyCompletedChatPayload = useCallback((payload, { streamId, sessionId, requestId } = {}) => {
+    const responseData = payload?.data || payload;
+    const assistantPayload = responseData?.assistant_message || responseData?.assistantMessage || responseData;
+    const assistantMessage = normalizeAssistantMessage(assistantPayload);
+
+    setMessages((prev) => mergeAssistantMessage(prev, {
+      ...assistantMessage,
+      requestId: requestId || assistantMessage.requestId,
+      requestStatus: CHAT_REQUEST_UI_STATUS.COMPLETED,
+      provisional: false,
+    }, streamId));
+
+    const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
+    if (eligibilityResult) {
+      setActiveEligibility((prev) => {
+        const nextEligibility = buildEligibilityStateFromResult(eligibilityResult, prev || {});
+        return nextEligibility || prev;
+      });
+    }
+
+    if (sessionId) clearPendingChatRequest(sessionId, requestId);
+  }, []);
+
+  const recoverChatRequest = useCallback(
+    async ({ sessionId, requestId, streamId, userText, idempotencyKey, reason = "reconnecting" }) => {
+      if (!sessionId || !requestId) return false;
+      recoveryAbortRef.current?.abort();
+      const controller = new AbortController();
+      recoveryAbortRef.current = controller;
+      const startedAt = Date.now();
+      let delay = CHAT_RECOVERY_BASE_DELAY_MS;
+
+      updateRequestMessage(streamId, {
+        requestStatus: reason === "processing" ? CHAT_REQUEST_UI_STATUS.PROCESSING : CHAT_REQUEST_UI_STATUS.RECONNECTING,
+        statusText: reason === "processing" ? CHAT_PROGRESS_TEXT.processing : CHAT_PROGRESS_TEXT.reconnecting,
+        requestId,
+        idempotencyKey,
+        retryText: userText,
+      });
+
+      while (!controller.signal.aborted && mountedRef.current) {
+        let statusPayload;
+        try {
+          statusPayload = await chatApi.getRequestStatus({ requestId, signal: controller.signal });
+        } catch (nextError) {
+          if (controller.signal.aborted || nextError?.code === "ERR_CANCELED") return false;
+          statusPayload = null;
+        }
+
+        const status = normalizeChatRequestStatusValue(statusPayload?.status);
+        if (status === CHAT_REQUEST_UI_STATUS.COMPLETED && statusPayload?.payload) {
+          applyCompletedChatPayload(statusPayload.payload, { streamId, sessionId, requestId });
+          return true;
+        }
+
+        if (status === CHAT_REQUEST_UI_STATUS.FAILED || status === CHAT_REQUEST_UI_STATUS.CANCELLED) {
+          clearPendingChatRequest(sessionId, requestId);
+          updateRequestMessage(streamId, {
+            requestStatus: status,
+            statusText:
+              status === CHAT_REQUEST_UI_STATUS.CANCELLED
+                ? CHAT_PROGRESS_TEXT.cancelled
+                : CHAT_PROGRESS_TEXT.failed,
+            provisional: false,
+            retryText: userText,
+          });
+          return false;
+        }
+
+        updateRequestMessage(streamId, {
+          requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
+          statusText: CHAT_PROGRESS_TEXT.processing,
+        });
+
+        if (Date.now() - startedAt > CHAT_RECOVERY_MAX_WAIT_MS) {
+          updateRequestMessage(streamId, {
+            requestStatus: CHAT_REQUEST_UI_STATUS.FAILED,
+            statusText: CHAT_PROGRESS_TEXT.failed,
+            provisional: false,
+            retryText: userText,
+          });
+          return false;
+        }
+
+        await wait(delay);
+        delay = Math.min(delay * 1.6, 6000);
+      }
+
+      return false;
+    },
+    [applyCompletedChatPayload, updateRequestMessage]
+  );
+
+  const finalizeSend = useCallback(async (sessionId, text, options = {}) => {
     const isRecommend = isRecommendRef.current;
     isRecommendRef.current = false;
 
-    const userMessageId = makeId("user");
-    setMessages((prev) => [...prev, { id: userMessageId, role: "user", content: text }]);
+    abortRef.current?.abort();
+    const idempotencyKey = options.idempotencyKey || createIdempotencyKey();
+    const userMessageId = options.userMessageId || makeId("user");
+    const streamId = options.streamId || makeId("assistant-stream");
+    const shouldAppendUser = options.appendUser !== false;
+
+    if (shouldAppendUser) {
+      setMessages((prev) => [...prev, { id: userMessageId, role: "user", content: text }]);
+    }
+    setMessages((prev) => {
+      if (prev.some((message) => message.id === streamId)) return prev;
+      return [...prev, {
+        id: streamId,
+        role: "assistant",
+        content: "",
+        policies: [],
+        evidences: [],
+        actions: [],
+        requestStatus: CHAT_REQUEST_UI_STATUS.SENDING,
+        statusText: CHAT_PROGRESS_TEXT.accepted,
+        requestId: options.requestId || null,
+        idempotencyKey,
+        provisional: true,
+        retryText: text,
+      }];
+    });
+
     setInput("");
     setError("");
     setLastFailedText(text);
     setSending(true);
 
-    const streamId = makeId("assistant-stream");
-    let streamFailed = false;
+    if (isRecommend) {
+      setRecommendPending(true);
+      setProgStep(0);
+      progTimersRef.current = [
+        setTimeout(() => setProgStep(1), 700),
+        setTimeout(() => setProgStep(2), 1400),
+      ];
+    }
+
+    const clearProgress = () => {
+      progTimersRef.current.forEach(clearTimeout);
+      progTimersRef.current = [];
+      setRecommendPending(false);
+    };
+
+
     let streamDone = false;
+    let acceptedRequestId = options.requestId || null;
     const controller = new AbortController();
     abortRef.current = controller;
+
+    storePendingChatRequest({
+      sessionId,
+      requestId: acceptedRequestId,
+      idempotencyKey,
+      userText: text,
+      streamId,
+      userMessageId,
+    });
 
     await sendMessageStream({
       sessionId,
       content: text,
       accessToken,
       signal: controller.signal,
-      onToken: (delta) => {
+      idempotencyKey,
+      onAccepted: (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        acceptedRequestId = getChatRequestId(event);
+        if (!acceptedRequestId) return;
+        storePendingChatRequest({
+          sessionId,
+          requestId: acceptedRequestId,
+          idempotencyKey,
+          userText: text,
+          streamId,
+          userMessageId,
+        });
+        updateRequestMessage(streamId, {
+          requestId: acceptedRequestId,
+          requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
+          statusText: CHAT_PROGRESS_TEXT.accepted,
+        });
+      },
+      onIntent: (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        const intent = event.intent || "";
+        updateRequestMessage(streamId, {
+          requestId: getChatRequestId(event) || acceptedRequestId,
+          requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
+          statusText: /recommendation|eligibility/.test(intent)
+            ? CHAT_PROGRESS_TEXT.analyzing
+            : CHAT_PROGRESS_TEXT.processing,
+        });
+      },
+      onProgress: (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        updateRequestMessage(streamId, {
+          requestId: getChatRequestId(event) || acceptedRequestId,
+          requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
+          statusText: getProgressMessage(event),
+        });
+      },
+      onToken: (delta, event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
         if (!delta) return;
         setStreamingMessageId(streamId);
         setMessages((prev) => {
@@ -1580,60 +1937,155 @@ export default function ChatPage() {
             policies: [],
             evidences: [],
             actions: [],
+            requestId: getChatRequestId(event) || acceptedRequestId,
+            requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
+            statusText: CHAT_PROGRESS_TEXT.composing,
+            provisional: true,
+            retryText: text,
           }];
         });
       },
-      onDone: (payload) => {
+      onDone: (payload, event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
         streamDone = true;
-        const responseData = payload?.data || payload;
-        const assistantPayload = responseData?.assistant_message || responseData?.assistantMessage || responseData;
-        const assistantMessage = normalizeAssistantMessage(assistantPayload);
-        setMessages((prev) => {
-          const withoutStream = prev.filter((message) => message.id !== streamId);
-          return [...withoutStream, assistantMessage];
-        });
-        const eligibilityResult = assistantPayload?.eligibility_result || assistantPayload?.eligibilityResult;
-        if (eligibilityResult) {
-          setActiveEligibility((prev) => {
-            const nextEligibility = buildEligibilityStateFromResult(eligibilityResult, prev || {});
-            return nextEligibility || prev;
-          });
-        }
+        acceptedRequestId = getChatRequestId(event) || acceptedRequestId;
+        clearProgress();
+        applyCompletedChatPayload(payload, { streamId, sessionId, requestId: acceptedRequestId });
       },
-      onError: () => { streamFailed = true; },
+      onCancelled: (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        streamDone = true;
+        acceptedRequestId = getChatRequestId(event) || acceptedRequestId;
+        clearPendingChatRequest(sessionId, acceptedRequestId);
+        updateRequestMessage(streamId, {
+          requestId: acceptedRequestId,
+          requestStatus: CHAT_REQUEST_UI_STATUS.CANCELLED,
+          statusText: CHAT_PROGRESS_TEXT.cancelled,
+          provisional: false,
+        });
+      },
+      onError: (event) => {
+        if (controller.signal.aborted || !mountedRef.current) return;
+        acceptedRequestId = event?.requestId || getChatRequestId(event?.event) || acceptedRequestId;
+        clearProgress();
+      },
     });
 
-    if (!streamDone) {
+    if (!mountedRef.current) return;
+
+    if (controller.signal.aborted) {
+      setSending(false);
       setStreamingMessageId(null);
-      setMessages((prev) => prev.filter((message) => message.id !== streamId));
+      if (abortRef.current === controller) abortRef.current = null;
+      return;
     }
 
-    if (streamFailed || !streamDone) {
-      try {
-        const result = await chatApi.sendMessage({ sessionId, content: text });
-        const fallbackAssistantMessage = {
-          ...result.assistantMessage,
-          id: result.assistantMessage.id || makeId("assistant"),
-        };
-        setMessages((prev) => [
-          ...prev,
-          fallbackAssistantMessage,
-        ]);
-        const eligibilityResult = getMessageEligibilityResult(fallbackAssistantMessage);
-        if (eligibilityResult) {
-          setActiveEligibility((prev) => buildEligibilityStateFromResult(eligibilityResult, prev || {}) || prev);
-        }
-      } catch (nextError) {
-        setMessages((prev) => prev.filter((message) => message.id !== userMessageId));
-        addError(getErrorMessage(nextError), text);
-      }
+    if (!streamDone && acceptedRequestId) {
+      await recoverChatRequest({
+        sessionId,
+        requestId: acceptedRequestId,
+        streamId,
+        userText: text,
+        idempotencyKey,
+      });
+    } else if (!streamDone) {
+      setStreamingMessageId(null);
+      updateRequestMessage(streamId, {
+        requestStatus: CHAT_REQUEST_UI_STATUS.FAILED,
+        statusText: CHAT_PROGRESS_TEXT.failed,
+        provisional: false,
+        retryText: text,
+      });
     }
 
     setSending(false);
     setStreamingMessageId(null);
-    abortRef.current = null;
+    clearProgress();
+    if (abortRef.current === controller) abortRef.current = null;
     refreshSessions();
-  }, [accessToken, addError, refreshSessions]);
+  }, [accessToken, applyCompletedChatPayload, recoverChatRequest, refreshSessions, updateRequestMessage]);
+
+  useEffect(() => {
+    if (
+      authLoading ||
+      !isAuthenticated ||
+      !activeSessionId ||
+      restoring ||
+      sending
+    ) {
+      return;
+    }
+
+    let cancelled = false;
+    const controller = new AbortController();
+
+    const startRecovery = async () => {
+      const stored = readPendingChatRequests()[String(activeSessionId)] || null;
+      let pending = stored;
+
+      if (!pending?.requestId) {
+        try {
+          const latest = await chatApi.getLatestIncompleteRequest({
+            sessionId: activeSessionId,
+            signal: controller.signal,
+          });
+          if (latest?.requestId) {
+            pending = {
+              sessionId: activeSessionId,
+              requestId: latest.requestId,
+              idempotencyKey: latest.idempotencyKey,
+              userText: stored?.userText || "",
+            };
+          }
+        } catch (nextError) {
+          if (controller.signal.aborted || nextError?.code === "ERR_CANCELED") return;
+        }
+      }
+
+      if (cancelled || !pending?.requestId) return;
+      const recoveryKey = `${activeSessionId}:${pending.requestId}`;
+      if (recoveryStartedRef.current.has(recoveryKey)) return;
+      recoveryStartedRef.current.add(recoveryKey);
+
+      const streamId = pending.streamId || `assistant-recovery-${pending.requestId}`;
+      setMessages((prev) => {
+        const hasAssistant =
+          prev.some((message) => String(message.requestId || "") === String(pending.requestId)) ||
+          prev.some((message) => String(message.raw?.chat_message_id || message.raw?.chatMessageId || "") === String(pending.assistantMessageId || ""));
+        if (hasAssistant) return prev;
+        return [...prev, {
+          id: streamId,
+          role: "assistant",
+          content: "",
+          policies: [],
+          evidences: [],
+          actions: [],
+          requestId: pending.requestId,
+          idempotencyKey: pending.idempotencyKey,
+          requestStatus: CHAT_REQUEST_UI_STATUS.RECONNECTING,
+          statusText: CHAT_PROGRESS_TEXT.reconnecting,
+          provisional: true,
+          retryText: pending.userText || "",
+        }];
+      });
+
+      await recoverChatRequest({
+        sessionId: activeSessionId,
+        requestId: pending.requestId,
+        streamId,
+        userText: pending.userText || "",
+        idempotencyKey: pending.idempotencyKey,
+      });
+    };
+
+    startRecovery();
+
+    return () => {
+      cancelled = true;
+      controller.abort();
+      recoveryAbortRef.current?.abort();
+    };
+  }, [activeSessionId, authLoading, isAuthenticated, recoverChatRequest, restoring, sending]);
 
   const send = useCallback(
     async (raw) => {
@@ -1680,6 +2132,34 @@ export default function ChatPage() {
       restoring,
       sending,
     ]
+  );
+
+  const retryRequestMessage = useCallback(
+    async (message) => {
+      const text = message?.retryText || lastFailedText;
+      if (!text || !activeSessionId || sending || restoring) return;
+      setError("");
+
+      if (message?.requestId) {
+        const recovered = await recoverChatRequest({
+          sessionId: activeSessionId,
+          requestId: message.requestId,
+          streamId: message.id,
+          userText: text,
+          idempotencyKey: message.idempotencyKey,
+          reason: "reconnecting",
+        });
+        if (recovered) return;
+      }
+
+      const nextKey = createIdempotencyKey();
+      await finalizeSend(activeSessionId, text, {
+        appendUser: false,
+        streamId: message?.id || makeId("assistant-retry"),
+        idempotencyKey: nextKey,
+      });
+    },
+    [activeSessionId, finalizeSend, lastFailedText, recoverChatRequest, restoring, sending]
   );
 
   // 카드의 '유사 정책' 버튼 → 명시 요청을 전송해, 유사 정책을 다음 챗봇 응답으로 받는다.
@@ -1871,6 +2351,7 @@ export default function ChatPage() {
                       onAnalyzeEligibility={startEligibilityAnalysis}
                       onAskSimilar={askSimilar}
                       activePolicyId={activeEligibility?.status === REQUEST_STATUS.PROCESSING ? activeEligibility?.policyId : null}
+                      onRetryRequest={retryRequestMessage}
                     />
                   )
                 )}
@@ -1887,8 +2368,19 @@ export default function ChatPage() {
                     </div>
                   </div>
                 )}
-                {sending && !streamingMessageId && (
-                  <TypingIndicator />
+                {sending && !streamingMessageId && !hasPendingChatRequest && (
+                  recommendPending ? (
+                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                      <span className="dd-chat-avatar">
+                        <Icon name="Sparkles" size={20} />
+                      </span>
+                      <div className="dd-bubble-ai">
+                        <RecommendProgress activeStep={progStep} />
+                      </div>
+                    </div>
+                  ) : (
+                    <TypingIndicator />
+                  )
                 )}
               </div>
             )}
