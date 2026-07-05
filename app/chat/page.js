@@ -23,6 +23,12 @@ import RecommendChatCard from "@/app/components/RecommendChatCard";
 import ChatPromptDock from "@/app/components/ChatPromptDock";
 import { DISCLAIMER_TEXT } from "@/app/data/constants";
 import { AuthContext } from "@/contexts/AuthContext";
+import {
+  applyProgressEvent,
+  createChatProgress,
+  setProgressFlow,
+  tickChatProgress,
+} from "@/app/chat/chatProgress.mjs";
 
 const EXAMPLE_CHIPS = [
   "임신 중인데 받을 수 있는 지원 알려줘",
@@ -922,11 +928,22 @@ function CompareGuideChatCard({ content }) {
 }
 
 function RequestStatusMessage({ message, onRetryRequest }) {
-  if (!message.requestStatus || message.requestStatus === CHAT_REQUEST_UI_STATUS.COMPLETED) {
+  if (
+    !message.requestStatus ||
+    message.requestStatus === CHAT_REQUEST_UI_STATUS.COMPLETED ||
+    message.responseStarted
+  ) {
     return null;
   }
 
   const isFailed = message.requestStatus === CHAT_REQUEST_UI_STATUS.FAILED;
+  const isCancelled = message.requestStatus === CHAT_REQUEST_UI_STATUS.CANCELLED;
+  const isActive = !isFailed && !isCancelled;
+  const hasConfirmedGraphProgress =
+    Number(message.progressStep) > 0 && Number(message.progressTotal) > 0;
+  const progressPercent = hasConfirmedGraphProgress && Number.isFinite(message.progressPercent)
+    ? Math.max(1, Math.min(100, Math.round(message.progressPercent)))
+    : null;
   const statusText =
     message.statusText ||
     (isFailed
@@ -940,7 +957,7 @@ function RequestStatusMessage({ message, onRetryRequest }) {
   return (
     <div style={{ marginTop: message.content ? 10 : 0 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, color: "var(--dd-stone-500)", fontSize: 12 }}>
-        {!isFailed && message.requestStatus !== CHAT_REQUEST_UI_STATUS.CANCELLED && (
+        {isActive && (
           <>
             <span className="dd-typing-dot" style={{ animationDelay: "0s" }} />
             <span className="dd-typing-dot" style={{ animationDelay: ".15s" }} />
@@ -948,9 +965,41 @@ function RequestStatusMessage({ message, onRetryRequest }) {
           </>
         )}
         {isFailed && <Icon name="CircleAlert" size={14} />}
-        {message.requestStatus === CHAT_REQUEST_UI_STATUS.CANCELLED && <Icon name="X" size={14} />}
+        {isCancelled && <Icon name="X" size={14} />}
         <span>{statusText}</span>
+        {progressPercent !== null && (
+          <strong style={{ marginLeft: "auto", color: "var(--dd-ink-80)", fontVariantNumeric: "tabular-nums" }}>
+            {progressPercent}%
+          </strong>
+        )}
       </div>
+      {isActive && progressPercent !== null && (
+        <div
+          role="progressbar"
+          aria-label="채팅 응답 처리 진행률"
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={progressPercent}
+          style={{
+            height: 4,
+            marginTop: 8,
+            overflow: "hidden",
+            borderRadius: 999,
+            background: "var(--dd-stone-100)",
+          }}
+        >
+          <span
+            style={{
+              display: "block",
+              width: `${progressPercent}%`,
+              height: "100%",
+              borderRadius: "inherit",
+              background: "var(--dd-coral)",
+              transition: "width 250ms ease-out",
+            }}
+          />
+        </div>
+      )}
       {isFailed && (
         <button
           type="button"
@@ -1261,6 +1310,52 @@ export default function ChatPage() {
     () => messages.some((message) => message.role === "assistant" && message.requestStatus && message.requestStatus !== CHAT_REQUEST_UI_STATUS.COMPLETED),
     [messages]
   );
+
+  const hasTickingChatProgress = useMemo(
+    () => messages.some((message) =>
+      message.role === "assistant" &&
+      message.provisional &&
+      !message.responseStarted &&
+      Number(message.progressStep) > 0 &&
+      Number(message.progressTotal) > 0 &&
+      [
+        CHAT_REQUEST_UI_STATUS.SENDING,
+        CHAT_REQUEST_UI_STATUS.PROCESSING,
+        CHAT_REQUEST_UI_STATUS.RECONNECTING,
+      ].includes(message.requestStatus)
+    ),
+    [messages]
+  );
+
+  useEffect(() => {
+    if (!hasTickingChatProgress) return undefined;
+    const timer = window.setInterval(() => {
+      const now = Date.now();
+      setMessages((current) => {
+        let changed = false;
+        const next = current.map((message) => {
+          const shouldTick =
+            message.role === "assistant" &&
+            message.provisional &&
+            !message.responseStarted &&
+            Number(message.progressStep) > 0 &&
+            Number(message.progressTotal) > 0 &&
+            [
+              CHAT_REQUEST_UI_STATUS.SENDING,
+              CHAT_REQUEST_UI_STATUS.PROCESSING,
+              CHAT_REQUEST_UI_STATUS.RECONNECTING,
+            ].includes(message.requestStatus);
+          if (!shouldTick) return message;
+          const progress = tickChatProgress(message, now);
+          if (progress.progressPercent === message.progressPercent) return message;
+          changed = true;
+          return { ...message, ...progress };
+        });
+        return changed ? next : current;
+      });
+    }, 250);
+    return () => window.clearInterval(timer);
+  }, [hasTickingChatProgress]);
 
   const refreshSessions = useCallback(async () => {
     if (authLoading || !isAuthenticated) return;
@@ -1709,7 +1804,7 @@ export default function ChatPage() {
     setMessages((prev) =>
       prev.map((message) =>
         message.id === messageId
-          ? { ...message, ...patch }
+          ? { ...message, ...(typeof patch === "function" ? patch(message) : patch) }
           : message
       )
     );
@@ -1836,6 +1931,7 @@ export default function ChatPage() {
         idempotencyKey,
         provisional: true,
         retryText: text,
+        ...createChatProgress(Date.now()),
       }];
     });
 
@@ -1888,21 +1984,23 @@ export default function ChatPage() {
       onIntent: (event) => {
         if (controller.signal.aborted || !mountedRef.current) return;
         const intent = event.intent || "";
-        updateRequestMessage(streamId, {
+        updateRequestMessage(streamId, (message) => ({
+          ...setProgressFlow(message, intent, Date.now()),
           requestId: getChatRequestId(event) || acceptedRequestId,
           requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
           statusText: /recommendation|eligibility/.test(intent)
             ? CHAT_PROGRESS_TEXT.analyzing
             : CHAT_PROGRESS_TEXT.processing,
-        });
+        }));
       },
       onProgress: (event) => {
         if (controller.signal.aborted || !mountedRef.current) return;
-        updateRequestMessage(streamId, {
+        updateRequestMessage(streamId, (message) => ({
+          ...applyProgressEvent(message, event, Date.now()),
           requestId: getChatRequestId(event) || acceptedRequestId,
           requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
           statusText: getProgressMessage(event),
-        });
+        }));
       },
       onToken: (delta, event) => {
         if (controller.signal.aborted || !mountedRef.current) return;
@@ -1913,7 +2011,11 @@ export default function ChatPage() {
           if (current) {
             return prev.map((message) =>
               message.id === streamId
-                ? { ...message, content: `${message.content || ""}${delta}` }
+                ? {
+                    ...message,
+                    content: `${message.content || ""}${delta}`,
+                    responseStarted: true,
+                  }
                 : message
             );
           }
@@ -1928,7 +2030,9 @@ export default function ChatPage() {
             requestStatus: CHAT_REQUEST_UI_STATUS.PROCESSING,
             statusText: CHAT_PROGRESS_TEXT.composing,
             provisional: true,
+            responseStarted: true,
             retryText: text,
+            ...createChatProgress(Date.now()),
           }];
         });
       },
@@ -2055,6 +2159,7 @@ export default function ChatPage() {
           statusText: CHAT_PROGRESS_TEXT.reconnecting,
           provisional: true,
           retryText: pending.userText || "",
+          ...createChatProgress(Date.now()),
         }];
       });
 
