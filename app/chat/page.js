@@ -1844,20 +1844,7 @@ export default function ChatPage() {
     setLastFailedText(text);
     setSending(true);
 
-    if (isRecommend) {
-      setRecommendPending(true);
-      setProgStep(0);
-      progTimersRef.current = [
-        setTimeout(() => setProgStep(1), 700),
-        setTimeout(() => setProgStep(2), 1400),
-      ];
-    }
-
-    const clearProgress = () => {
-      progTimersRef.current.forEach(clearTimeout);
-      progTimersRef.current = [];
-      setRecommendPending(false);
-    };
+    const clearProgress = () => {};
 
 
     let streamDone = false;
@@ -2017,6 +2004,8 @@ export default function ChatPage() {
     }
 
     let cancelled = false;
+    let recoveryKey = null;
+    const recoveryStarted = recoveryStartedRef.current;
     const controller = new AbortController();
 
     const startRecovery = async () => {
@@ -2043,9 +2032,9 @@ export default function ChatPage() {
       }
 
       if (cancelled || !pending?.requestId) return;
-      const recoveryKey = `${activeSessionId}:${pending.requestId}`;
-      if (recoveryStartedRef.current.has(recoveryKey)) return;
-      recoveryStartedRef.current.add(recoveryKey);
+      recoveryKey = `${activeSessionId}:${pending.requestId}`;
+      if (recoveryStarted.has(recoveryKey)) return;
+      recoveryStarted.add(recoveryKey);
 
       const streamId = pending.streamId || `assistant-recovery-${pending.requestId}`;
       setMessages((prev) => {
@@ -2069,19 +2058,28 @@ export default function ChatPage() {
         }];
       });
 
-      await recoverChatRequest({
-        sessionId: activeSessionId,
-        requestId: pending.requestId,
-        streamId,
-        userText: pending.userText || "",
-        idempotencyKey: pending.idempotencyKey,
-      });
+      try {
+        await recoverChatRequest({
+          sessionId: activeSessionId,
+          requestId: pending.requestId,
+          streamId,
+          userText: pending.userText || "",
+          idempotencyKey: pending.idempotencyKey,
+        });
+      } finally {
+        if (!cancelled) {
+          recoveryStarted.delete(recoveryKey);
+        }
+      }
     };
 
     startRecovery();
 
     return () => {
       cancelled = true;
+      if (recoveryKey) {
+        recoveryStarted.delete(recoveryKey);
+      }
       controller.abort();
       recoveryAbortRef.current?.abort();
     };
@@ -2369,18 +2367,7 @@ export default function ChatPage() {
                   </div>
                 )}
                 {sending && !streamingMessageId && !hasPendingChatRequest && (
-                  recommendPending ? (
-                    <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
-                      <span className="dd-chat-avatar">
-                        <Icon name="Sparkles" size={20} />
-                      </span>
-                      <div className="dd-bubble-ai">
-                        <RecommendProgress activeStep={progStep} />
-                      </div>
-                    </div>
-                  ) : (
-                    <TypingIndicator />
-                  )
+                  <TypingIndicator />
                 )}
               </div>
             )}

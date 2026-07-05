@@ -8,6 +8,7 @@
 // =========================================================================
 import { useContext, useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { getApiErrorMessage } from "@/apis/axiosConfig";
 import { streamRecommendationRequest } from "@/apis/recommendationApi";
 import familyProfileApi from "@/apis/familyProfileApi";
 import { AuthContext } from "@/contexts/AuthContext";
