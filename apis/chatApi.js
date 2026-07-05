@@ -414,6 +414,41 @@ const sendMessage = async ({ sessionId, content, signal }) => {
   };
 };
 
+const normalizeChatRequestStatus = (data) => {
+  const payload = getPayload(data);
+  if (!payload) return null;
+  return {
+    requestId: String(payload.request_id || payload.requestId || ""),
+    chatSessionId: String(payload.chat_session_id || payload.chatSessionId || ""),
+    userMessageId: payload.user_message_id || payload.userMessageId || null,
+    idempotencyKey: payload.idempotency_key || payload.idempotencyKey || null,
+    status: String(payload.status || "").toLowerCase(),
+    intent: payload.intent || null,
+    errorCode: payload.error_code || payload.errorCode || null,
+    errorMessage: payload.error_message || payload.errorMessage || null,
+    assistantMessageId: payload.assistant_message_id || payload.assistantMessageId || null,
+    retryable: !!payload.retryable,
+    payload: payload.payload || null,
+    raw: payload,
+  };
+};
+
+const getRequestStatus = async ({ requestId, signal }) => {
+  const data = await axios.get(
+    `/api/v1/chat/requests/${encodeURIComponent(requestId)}`,
+    { signal, preserveResponse: true }
+  );
+  return normalizeChatRequestStatus(data);
+};
+
+const getLatestIncompleteRequest = async ({ sessionId, signal }) => {
+  const data = await axios.get(
+    `${CHAT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/requests/incomplete/latest`,
+    { signal, preserveResponse: true }
+  );
+  return normalizeChatRequestStatus(data);
+};
+
 const getMessages = async ({ sessionId, signal }) => {
   const data = await axios.get(
     `${CHAT_SESSIONS_PATH}/${encodeURIComponent(sessionId)}/messages`,
@@ -433,6 +468,8 @@ const chatApi = {
   deleteSession,
   bulkDeleteSessions,
   sendMessage,
+  getRequestStatus,
+  getLatestIncompleteRequest,
   getMessages,
 };
 

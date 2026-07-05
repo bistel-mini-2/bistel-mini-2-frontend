@@ -27,16 +27,21 @@ const parseSseEventBlock = (raw) => {
   }
 };
 
-const dispatchEvent = (event, { onToken, onDone, onError, onProgress, onIntent }) => {
+const dispatchEvent = (event, { onAccepted, onToken, onDone, onError, onProgress, onIntent, onCancelled }) => {
   if (!event || typeof event !== "object") return false;
 
+  if (event.type === "accepted") {
+    onAccepted?.(event);
+    return false;
+  }
+
   if (event.type === "token") {
-    onToken?.(typeof event.delta === "string" ? event.delta : "");
+    onToken?.(typeof event.delta === "string" ? event.delta : "", event);
     return false;
   }
 
   if (event.type === "done") {
-    onDone?.(event.payload);
+    onDone?.(event.payload, event);
     return true;
   }
 
@@ -44,6 +49,8 @@ const dispatchEvent = (event, { onToken, onDone, onError, onProgress, onIntent }
     onError?.({
       code: event.code || "STREAM_ERROR",
       message: event.message || "응답을 받는 중 문제가 생겼어요.",
+      requestId: event.request_id || event.requestId,
+      event,
     });
     return true;
   }
@@ -58,6 +65,12 @@ const dispatchEvent = (event, { onToken, onDone, onError, onProgress, onIntent }
     return false;
   }
 
+  if (event.type === "cancelled") {
+    onCancelled?.(event);
+    return true;
+  }
+
+
   return false;
 };
 
@@ -66,11 +79,14 @@ export async function sendMessageStream({
   content,
   accessToken,
   signal,
+  idempotencyKey,
+  onAccepted,
   onToken,
   onDone,
   onError,
   onProgress,
   onIntent,
+  onCancelled,
 }) {
   if (!sessionId) {
     onError?.({
@@ -94,7 +110,10 @@ export async function sendMessageStream({
     response = await fetch(`${baseUrl}${streamPath(sessionId)}`, {
       method: "POST",
       headers,
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({
+        content,
+        ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+      }),
       signal,
     });
   } catch (error) {
@@ -133,7 +152,15 @@ export async function sendMessageStream({
         const block = buffer.slice(0, boundary);
         buffer = buffer.slice(boundary + 2);
         const event = parseSseEventBlock(block);
-        const isTerminal = dispatchEvent(event, { onToken, onDone, onError, onProgress, onIntent });
+        const isTerminal = dispatchEvent(event, {
+          onAccepted,
+          onToken,
+          onDone,
+          onError,
+          onProgress,
+          onIntent,
+          onCancelled,
+        });
         if (isTerminal) finished = true;
         boundary = buffer.indexOf("\n\n");
       }
@@ -142,7 +169,15 @@ export async function sendMessageStream({
     buffer += decoder.decode().replace(/\r\n/g, "\n").replace(/\r/g, "\n");
     if (buffer.trim().length > 0) {
       const event = parseSseEventBlock(buffer);
-      const isTerminal = dispatchEvent(event, { onToken, onDone, onError, onProgress, onIntent });
+      const isTerminal = dispatchEvent(event, {
+        onAccepted,
+        onToken,
+        onDone,
+        onError,
+        onProgress,
+        onIntent,
+        onCancelled,
+      });
       if (isTerminal) finished = true;
     }
 
