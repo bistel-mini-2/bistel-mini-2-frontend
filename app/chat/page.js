@@ -1620,6 +1620,7 @@ export default function ChatPage() {
       setActiveEligibility(base);
 
       try {
+        const idempotencyKey = createIdempotencyKey();
         const response = await eligibilityApi.createRequest({
           chatSessionId: activeSessionId,
           policyId,
@@ -1627,6 +1628,7 @@ export default function ChatPage() {
           sourceRefId,
           userConditions,
           rawQuery: `${policyName} 지원가능성 분석`,
+          idempotencyKey,
         });
         const requestId = getEligibilityRequestId(response);
 
@@ -1687,6 +1689,7 @@ export default function ChatPage() {
       }));
 
       try {
+        const idempotencyKey = createIdempotencyKey();
         const response = await eligibilityApi.createRequest({
           chatSessionId: activeSessionId,
           policyId: activeEligibility.policyId,
@@ -1695,6 +1698,7 @@ export default function ChatPage() {
           userConditions: mergedUserConditions,
           rawQuery: text,
           manualConfirmations,
+          idempotencyKey,
         });
         const requestId = getEligibilityRequestId(response);
         if (!requestId) {
@@ -1776,10 +1780,12 @@ export default function ChatPage() {
           }));
           await submitRecommendationAnswers(requestId, followUpAnswers);
         } else {
+          const idempotencyKey = createIdempotencyKey();
           const created = await createRecommendationRequest({
             source_type: "CHAT",
             raw_query: text,
             selected_conditions: selectedConditions,
+            idempotencyKey,
           });
           requestId = created.requestId;
         }

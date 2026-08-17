@@ -211,7 +211,11 @@ const normalizeRecommendationResult = (data) => {
 };
 
 export const createRecommendationRequest = async (payload) => {
-  const data = await axios.post(RECOMMENDATIONS_BASE_PATH, payload);
+  const { idempotencyKey, ...rest } = payload || {};
+  const data = await axios.post(RECOMMENDATIONS_BASE_PATH, {
+    ...rest,
+    ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+  });
   const requestId = getRequestId(data);
 
   if (!requestId) {
@@ -228,6 +232,7 @@ export const createRecommendationRequest = async (payload) => {
 
 export const streamRecommendationRequest = ({
   payload,
+  idempotencyKey,
   accessToken,
   signal,
   onProgress,
@@ -236,7 +241,10 @@ export const streamRecommendationRequest = ({
 }) =>
   postSseStream({
     url: `${RECOMMENDATIONS_BASE_PATH}/stream`,
-    body: payload,
+    body: {
+      ...(payload || {}),
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
+    },
     accessToken,
     signal,
     onProgress,

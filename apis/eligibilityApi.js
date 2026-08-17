@@ -12,6 +12,7 @@ const createRequest = ({
   sourceType,
   rawQuery,
   manualConfirmations,
+  idempotencyKey,
 }, config = {}) =>
   axios.post(
     ELIGIBILITY_REQUESTS_PATH,
@@ -25,6 +26,7 @@ const createRequest = ({
         (sourceType === "RECOMMENDATION_RESULT" ? null : policyId),
       raw_query: rawQuery || null,
       manual_confirmations: manualConfirmations || [],
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     },
     config
   );
@@ -39,6 +41,7 @@ const streamRequest = ({
   sourceType,
   rawQuery,
   selectedConditions,
+  idempotencyKey,
   accessToken,
   signal,
   onProgress,
@@ -54,6 +57,7 @@ const streamRequest = ({
       source_ref_id: sourceRefId || (sourceType === "RECOMMENDATION_RESULT" ? null : policyId),
       raw_query: rawQuery || null,
       selected_conditions: selectedConditions || null,
+      ...(idempotencyKey ? { idempotency_key: idempotencyKey } : {}),
     },
     accessToken,
     signal,
