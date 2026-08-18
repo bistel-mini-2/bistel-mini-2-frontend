@@ -17,6 +17,7 @@
 - Bootstrap 5.3
 - Axios
 - lucide-react
+- Playwright (`@playwright/test`) — 브라우저 렌더링/콘솔 스모크 검증용
 
 ## 실행 방법
 
@@ -35,7 +36,30 @@ npm run dev
 npm run build
 npm run start
 npm run lint
+node --test app/chat/chatProgress.test.mjs
 ```
+
+## 검증 방법
+
+기본 검증은 아래 순서로 진행합니다.
+
+```bash
+npm run lint
+node --test app/chat/chatProgress.test.mjs
+npm run build
+```
+
+브라우저 렌더링이나 콘솔 에러를 확인해야 하는 변경은 Playwright를 사용합니다. 새 환경에서 브라우저 실행 파일이 없으면 먼저 Chromium을 설치합니다.
+
+```bash
+npx playwright install chromium
+```
+
+권장 브라우저 스모크 범위:
+
+- `/chat` 페이지가 HTTP 200으로 렌더링되는지 확인합니다.
+- `새 상담 시작`, `상담 이력`, 메시지 입력창, `전송` 버튼이 보이는지 확인합니다.
+- 브라우저 `console` error와 `pageerror`가 없는지 확인합니다.
 
 ## 현재 프로젝트 구조
 

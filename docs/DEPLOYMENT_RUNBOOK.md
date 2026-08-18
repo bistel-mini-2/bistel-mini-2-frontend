@@ -32,8 +32,39 @@ Do not store backend secrets, database URLs, JWT secrets, or OpenAI keys in the 
 ```bash
 npm ci
 npm run lint
-node app/chat/chatProgress.test.mjs
+node --test app/chat/chatProgress.test.mjs
 npm run build
+```
+
+## Local Browser Smoke
+
+Run this when a frontend change touches chat rendering, form submission, or
+client-side request handling.
+
+1. Build the app.
+
+   ```bash
+   npm run build
+   ```
+
+2. Start the production server locally.
+
+   ```bash
+   npm run start
+   ```
+
+3. Use Playwright or a browser to open `/chat` and verify:
+
+   - HTTP status is 200.
+   - The page title is `도담 — 가족·육아 복지 도우미`.
+   - `새 상담 시작`, `상담 이력`, the message input, and `전송` are visible.
+   - Browser console errors and page errors are empty.
+
+If Playwright browser binaries are missing in a fresh environment, install
+Chromium first.
+
+```bash
+npx playwright install chromium
 ```
 
 ## Deployment Order
