@@ -280,9 +280,12 @@ function SlotDock({ slotRequest, onSubmit, disabled, flowType, requestId, target
   const currentField = fields[step] ?? null;
   const isLastStep = step === fields.length - 1;
   const isMulti = currentField ? multi.includes(currentField.key) : false;
-  const opts = currentField
-    ? getFieldOptions(currentField).concat([{ label: "잘 모르겠어요", value: UNKNOWN_VALUE }])
-    : [];
+  const opts = (() => {
+    if (!currentField) return [];
+    const fieldOpts = getFieldOptions(currentField);
+    const hasUnknown = fieldOpts.some((o) => o.value === UNKNOWN_VALUE || o.label === "잘 모르겠어요");
+    return hasUnknown ? fieldOpts : fieldOpts.concat([{ label: "잘 모르겠어요", value: UNKNOWN_VALUE }]);
+  })();
   const currentIssueText = currentField ? getFieldIssueText(currentField) : "";
   const submitLabel = flowType === "eligibility" ? "이대로 분석하기" : "이대로 추천하기";
 

@@ -210,6 +210,14 @@ const getStatusCopy = (userStatus, status) => {
     };
   }
 
+  if (status === REQUEST_STATUS.FOLLOW_UP_REQUIRED) {
+    return {
+      title: "추가 확인이 필요해요",
+      summary: "아래 항목을 답해주시면 더 정확하게 판단해 드릴게요.",
+      tone: "warn",
+    };
+  }
+
   if (userStatus === "DIFFICULT_TO_RECOMMEND") {
     return {
       title: "지원 가능성이 낮아요",

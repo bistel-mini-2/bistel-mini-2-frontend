@@ -1266,6 +1266,10 @@ export default function ChatPage() {
   const restoreAbortRef = useRef(null);
   const recoveryAbortRef = useRef(null);
   const mountedRef = useRef(false);
+  // React state updates are asynchronous; this ref closes the same-tick
+  // window where a double click/Enter can start a second request before
+  // `sending` has re-rendered as true.
+  const submissionLockRef = useRef(false);
   const isRecommendRef = useRef(false);
   const followUpMessageKeysRef = useRef(new Set());
   const restoredSessionRef = useRef(false);
@@ -1591,6 +1595,8 @@ export default function ChatPage() {
         addError("지원가능성 분석에 필요한 정책 ID를 확인하지 못했어요.", "");
         return;
       }
+      if (submissionLockRef.current) return;
+      submissionLockRef.current = true;
 
       const sourceRefId = getRecommendationSourceRefId(policy, sourceMessage);
       const userConditions =
@@ -1647,6 +1653,8 @@ export default function ChatPage() {
           questions: [],
           error: message,
         }));
+      } finally {
+        submissionLockRef.current = false;
       }
     },
     [activeSessionId, addError, authLoading, fetchEligibilityResult, isAuthenticated, restoring, sending]
@@ -1655,6 +1663,8 @@ export default function ChatPage() {
   const submitEligibilityAnswer = useCallback(
     async (answer) => {
       if (!activeEligibility?.requestId || sending || restoring) return;
+      if (submissionLockRef.current) return;
+      submissionLockRef.current = true;
 
       const text = typeof answer === "string" ? answer : answer?.text || answer?.raw_answer || "";
 
@@ -1719,6 +1729,7 @@ export default function ChatPage() {
         addError(getApiErrorMessage(nextError, "지원가능성 분석 답변을 제출하지 못했어요."), text);
       } finally {
         setSending(false);
+        submissionLockRef.current = false;
       }
     },
     [activeEligibility, activeSessionId, addError, fetchEligibilityResult, restoring, sending]
@@ -1731,6 +1742,8 @@ export default function ChatPage() {
         addError("로그인 후 맞춤 추천을 이용할 수 있어요.", answer?.text || "");
         return;
       }
+      if (submissionLockRef.current) return;
+      submissionLockRef.current = true;
 
       const text = answer?.text || answer?.raw_answer || "입력한 조건으로 추천해줘";
       const selectedConditions = normalizeRecommendationAnswers(answer?.answers || {});
@@ -1800,6 +1813,7 @@ export default function ChatPage() {
         );
       } finally {
         setSending(false);
+        submissionLockRef.current = false;
         refreshSessions();
       }
     },
@@ -2204,6 +2218,8 @@ export default function ChatPage() {
         addError("로그인 후 챗봇 상담을 이용할 수 있어요.", text);
         return;
       }
+      if (submissionLockRef.current) return;
+      submissionLockRef.current = true;
       try {
         if (!isRecommendRef.current) {
           isRecommendRef.current = hasRecommendIntent(text);
@@ -2228,6 +2244,7 @@ export default function ChatPage() {
         addError(getErrorMessage(nextError), text);
       } finally {
         setSending(false);
+        submissionLockRef.current = false;
       }
     },
     [
@@ -2247,26 +2264,32 @@ export default function ChatPage() {
     async (message) => {
       const text = message?.retryText || lastFailedText;
       if (!text || !activeSessionId || sending || restoring) return;
-      setError("");
+      if (submissionLockRef.current) return;
+      submissionLockRef.current = true;
+      try {
+        setError("");
 
-      if (message?.requestId) {
-        const recovered = await recoverChatRequest({
-          sessionId: activeSessionId,
-          requestId: message.requestId,
-          streamId: message.id,
-          userText: text,
-          idempotencyKey: message.idempotencyKey,
-          reason: "reconnecting",
+        if (message?.requestId) {
+          const recovered = await recoverChatRequest({
+            sessionId: activeSessionId,
+            requestId: message.requestId,
+            streamId: message.id,
+            userText: text,
+            idempotencyKey: message.idempotencyKey,
+            reason: "reconnecting",
+          });
+          if (recovered) return;
+        }
+
+        const nextKey = createIdempotencyKey();
+        await finalizeSend(activeSessionId, text, {
+          appendUser: false,
+          streamId: message?.id || makeId("assistant-retry"),
+          idempotencyKey: nextKey,
         });
-        if (recovered) return;
+      } finally {
+        submissionLockRef.current = false;
       }
-
-      const nextKey = createIdempotencyKey();
-      await finalizeSend(activeSessionId, text, {
-        appendUser: false,
-        streamId: message?.id || makeId("assistant-retry"),
-        idempotencyKey: nextKey,
-      });
     },
     [activeSessionId, finalizeSend, lastFailedText, recoverChatRequest, restoring, sending]
   );
@@ -2464,7 +2487,7 @@ export default function ChatPage() {
                     />
                   )
                 )}
-                {activeEligibility && activeEligibility.status !== REQUEST_STATUS.FOLLOW_UP_REQUIRED && (
+                {activeEligibility && (
                   <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
                     <span className="dd-chat-avatar">
                       <Icon name="ShieldCheck" size={20} />
